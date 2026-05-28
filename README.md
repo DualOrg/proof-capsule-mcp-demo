@@ -1,0 +1,167 @@
+# Proof Capsule MCP Demo
+
+Proof Capsule is the use-case-agnostic DUAL primitive behind TradeFlow-style proof surfaces: a DUAL-anchored evidence envelope that binds claims, evidence references, policy checks, decisions, state, and external proof links into one verifiable object.
+
+This sandbox exposes that primitive through a Streamable HTTP MCP endpoint and a small UI. In production it can read from a live DUAL object and execute operator-gated event-bus mint/sync writes.
+
+## Scope
+
+- Local demo path: `sandbox/proof-capsule-mcp-demo`
+- UI: `http://127.0.0.1:4184`
+- MCP endpoint: `http://127.0.0.1:4184/mcp`
+- Boundary: public read/generate/verify; operator-gated DUAL mint/sync
+- Live DUAL writes: enabled when DUAL env vars and `DUAL_WRITE_MODE=event_bus` are configured
+- Wallet actions: disabled
+- Operator tokens: accepted only by server-side write endpoints/tools
+- Raw evidence storage: not performed
+
+## Run
+
+```bash
+npm install
+npm run check
+PORT=4184 npm start
+```
+
+Then in another terminal:
+
+```bash
+npm run smoke:mcp
+npm run proof:rederive
+```
+
+## Live DUAL Setup
+
+Required server-side environment:
+
+```bash
+DUAL_API_URL=https://api-testnet.dual.network
+DUAL_API_KEY=...
+DUAL_ORG_ID=69b935b4187e903f826bbe71
+DUAL_WRITE_MODE=event_bus
+DUAL_PROOF_CAPSULE_TEMPLATE_ID=...
+DUAL_PROOF_CAPSULE_OBJECT_ID=...
+DEMO_OPERATOR_TOKEN=...
+```
+
+Create or discover the DUAL template/object:
+
+```bash
+npm run setup:dual-live
+```
+
+Then verify readback:
+
+```bash
+npm run proof:dual
+```
+
+Run one controlled operator-gated write:
+
+```bash
+npm run proof:dual:write
+```
+
+The write path refuses public writes, checks org balance before event-bus actions, writes only proof-envelope metadata/hashes/evidence refs, and re-reads DUAL before reporting success.
+
+## MCP Surface
+
+Tools:
+
+- `get_capsule_status`
+- `get_live_dual_status`
+- `get_current_live_capsule`
+- `compose_proof_capsule`
+- `verify_proof_capsule`
+- `evaluate_capsule_policy`
+- `red_team_capsule`
+- `get_capsule_handoff`
+- `sync_proof_capsule_live`
+- `mint_proof_capsule_live`
+
+Resources:
+
+- `capsule://manifest`
+- `capsule://schema`
+- `capsule://policy/default`
+- `capsule://demo/tradeflow-medical-devices`
+- `capsule://scorecard`
+- `capsule://dual/status`
+- `capsule://dual/current`
+
+Resource template:
+
+- `capsule://demo/{scenario}`
+- Covered scenarios: `tradeflow_medical_devices`, `insurance_claim`, `agent_mandate_purchase`, `luxury_resale`, `carbon_credit`
+
+Prompts:
+
+- `proof_capsule_review`
+- `mcp_client_handoff`
+- `red_team_capsule_boundary`
+
+## Proof Semantics
+
+The demo uses:
+
+```text
+sha256(JSON.stringify(stableSort(value)))
+```
+
+Stable content hashes exclude `generated_at`. Envelope hashes include `generated_at` and represent a fresh attestation.
+
+The default TradeFlow capsule includes:
+
+- Solana ownership proof reference
+- IPFS bill of lading hash
+- signed telemetry reference
+- customs/compliance attestation
+- insurance attestation
+- settlement mirror proof
+- buyer mandate proof
+- DUAL object/template/state/integrity explorer links from the existing TradeFlow demo anchor
+
+The static compose/verify path still works without credentials. The live path stores the Proof Capsule as a DUAL object and returns object/template explorer links plus readback verification.
+
+The non-TradeFlow capsules use demo DUAL references and distinct source systems so the MCP surface proves that Proof Capsule is not a TradeFlow-only wrapper:
+
+- insurance claim evidence: policy admin, enterprise vault, signed tool logs, DUAL-style report and mandate references;
+- agent mandate purchase: agent identity, budget, counterparty, approval, and payment-preview proofs;
+- luxury resale ownership: Solana ownership, brand authentication, appraisal, vault custody, escrow, and buyer mandate proofs;
+- carbon credit offset: registry issuance, MRV, verifier attestation, Solana holder proof, retirement preview, and offset mandate proofs.
+
+The UI shows three provenance bands:
+
+- supplied by caller: subject, claims, and evidence references;
+- anchored externally: Solana, IPFS, vault, telemetry, policy, payment-preview, and DUAL references;
+- re-derived locally: policy, decision, and capsule hashes.
+
+## Production Deployment
+
+The app is Vercel-ready. Public endpoints:
+
+- `GET /api/status`
+- `GET /api/dual/status`
+- `GET /api/capsule/current`
+- `GET /api/capsule/demo?scenario=...`
+- `POST /api/capsule/verify`
+- `POST /api/capsule/evaluate`
+- `POST /api/capsule/red-team`
+- `GET|POST /mcp`
+
+Operator-gated endpoints:
+
+- `POST /api/capsules/sync`
+- `POST /api/capsules/mint`
+
+Production smoke:
+
+```bash
+npm run smoke:prod -- https://your-deployment.example
+```
+
+## Safety
+
+Public calls do not write to DUAL. Live writes are available only through the operator-gated API/MCP tools and require server-side credentials plus `DEMO_OPERATOR_TOKEN`.
+
+The `/mcp` endpoint enables permissive CORS for demo MCP clients. For a hardened production service, replace that with an explicit allow-list.

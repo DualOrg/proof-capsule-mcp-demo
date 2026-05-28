@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Proof Capsule Studio</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">DUAL primitive</p>
+        <h1>Proof Capsule Studio</h1>
+      </div>
+      <div class="top-actions">
+        <span class="status-pill" id="mcpStatus">MCP ready</span>
+        <span class="status-pill" id="dualStatus">DUAL checking</span>
+        <span class="status-pill safe" id="writeStatus">Public writes off</span>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="intro">
+        <div>
+          <p class="eyebrow">Use-case agnostic proof envelope</p>
+          <h2>Bind external tokenised data into one verifier-ready DUAL capsule.</h2>
+          <p class="lede">This demo composes ownership, documents, telemetry, compliance, insurance, settlement, mandate, and DUAL anchor references into deterministic hashes that an MCP client can re-derive.</p>
+        </div>
+        <div class="boundary">
+          <span>Boundary</span>
+          <strong>Public verify / operator-gated DUAL writes</strong>
+          <p>Verification is open. Mint and sync actions require the operator token and write only proof-envelope hashes, refs, state, and metadata to DUAL.</p>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <aside class="panel controls">
+          <div class="panel-title">
+            <span>Scenario</span>
+            <strong id="scenarioLabel">TradeFlow medical devices</strong>
+          </div>
+          <label for="scenarioSelect">Capsule scenario</label>
+          <select id="scenarioSelect">
+            <option value="tradeflow_medical_devices">TradeFlow medical devices</option>
+            <option value="insurance_claim">Insurance claim evidence</option>
+            <option value="agent_mandate_purchase">Agent mandate purchase</option>
+            <option value="luxury_resale">Luxury resale ownership</option>
+            <option value="carbon_credit">Carbon credit offset</option>
+          </select>
+          <button id="composeBtn" type="button">Compose capsule</button>
+          <button id="verifyBtn" type="button">Verify hashes</button>
+          <button id="redTeamBtn" type="button">Run red-team</button>
+          <div class="live-write">
+            <label for="operatorToken">Operator token</label>
+            <input id="operatorToken" type="password" autocomplete="off" placeholder="Required for DUAL writes">
+            <button id="syncBtn" type="button">Sync to DUAL</button>
+            <button id="mintBtn" type="button">Mint DUAL capsule</button>
+          </div>
+          <div class="mcp-card">
+            <span>MCP endpoint</span>
+            <code id="endpoint">http://127.0.0.1:4184/mcp</code>
+          </div>
+        </aside>
+
+        <section class="panel capsule">
+          <div class="panel-title">
+            <span>Capsule</span>
+            <strong id="capsuleId">Loading</strong>
+          </div>
+          <div class="metric-grid">
+            <div>
+              <span>Type</span>
+              <strong id="capsuleType">-</strong>
+            </div>
+            <div>
+              <span>Decision</span>
+              <strong id="decision">-</strong>
+            </div>
+            <div>
+              <span>Subject value</span>
+              <strong id="valueUsd">-</strong>
+            </div>
+            <div>
+              <span>Evidence refs</span>
+              <strong id="evidenceCount">-</strong>
+            </div>
+          </div>
+          <div class="bands" aria-label="Provenance bands">
+            <div>
+              <span>Supplied</span>
+              <strong>Subject, claims, evidence refs</strong>
+            </div>
+            <div>
+              <span>Anchored</span>
+              <strong>Solana, IPFS, vault, DUAL refs</strong>
+            </div>
+            <div>
+              <span>Re-derived</span>
+              <strong>Policy, decision, capsule hashes</strong>
+            </div>
+          </div>
+          <h3>Encapsulated proof data</h3>
+          <div id="evidenceList" class="evidence-list"></div>
+        </section>
+
+        <aside class="panel proof">
+          <div class="panel-title">
+            <span>Verifier</span>
+            <strong id="verifyStatus">Pending</strong>
+          </div>
+          <div class="dual-readiness" id="dualReadiness"></div>
+          <div class="hash-stack" id="hashStack"></div>
+          <div class="link-stack" id="linkStack"></div>
+        </aside>
+      </section>
+
+      <section class="panel output">
+        <div class="panel-title">
+          <span>MCP / API output</span>
+          <strong id="outputTitle">Current capsule JSON</strong>
+        </div>
+        <pre id="output">{}</pre>
+      </section>
+    </main>
+
+    <script type="module" src="./client.js"></script>
+  </body>
+</html>
