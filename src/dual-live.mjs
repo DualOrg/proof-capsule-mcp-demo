@@ -6,11 +6,23 @@ import {
   serviceDescriptor,
   verifyProofCapsule
 } from "./capsule-core.mjs";
+import { timingSafeEqual } from "node:crypto";
 
 export const ORG_ID = "69b935b4187e903f826bbe71";
 export const TEMPLATE_NAME = "io.dual.proof_capsule.demo.v1";
 export const LOCAL_TEMPLATE_ID = "proof-capsule-template-local-v1";
 export const LOCAL_OBJECT_ID = "proof-capsule-object-local-v1";
+export const OPERATOR_TOKEN_MIN_LENGTH = 32;
+const configuredAttemptLimit = Number(process.env.DEMO_OPERATOR_ATTEMPT_LIMIT || 12);
+const configuredAttemptWindowMs = Number(process.env.DEMO_OPERATOR_ATTEMPT_WINDOW_MS || 5 * 60 * 1000);
+export const OPERATOR_ATTEMPT_LIMIT = Number.isFinite(configuredAttemptLimit) && configuredAttemptLimit > 0
+  ? configuredAttemptLimit
+  : 12;
+export const OPERATOR_ATTEMPT_WINDOW_MS = Number.isFinite(configuredAttemptWindowMs) && configuredAttemptWindowMs > 0
+  ? configuredAttemptWindowMs
+  : 5 * 60 * 1000;
+
+const operatorFailures = new Map();
 
 export function dualConfig() {
   const writeMode = process.env.DUAL_WRITE_MODE || "read_only";
@@ -32,13 +44,15 @@ export function dualConfig() {
 export function readiness() {
   const config = dualConfig();
   const readbackReady = Boolean(config.apiKey && config.objectId);
-  const mintReady = Boolean(config.apiKey && config.templateId && config.operatorToken && config.writeMode === "event_bus");
+  const operatorTokenStrong = isOperatorTokenStrong(config.operatorToken);
+  const mintReady = Boolean(config.apiKey && config.templateId && operatorTokenStrong && config.writeMode === "event_bus");
   const syncReady = Boolean(mintReady && config.objectId);
   const missing = [];
   if (!config.apiKey) missing.push("DUAL_API_KEY");
   if (!config.templateId) missing.push("DUAL_PROOF_CAPSULE_TEMPLATE_ID");
   if (!config.objectId) missing.push("DUAL_PROOF_CAPSULE_OBJECT_ID");
   if (!config.operatorToken) missing.push("DEMO_OPERATOR_TOKEN");
+  if (config.operatorToken && !operatorTokenStrong) missing.push("DEMO_OPERATOR_TOKEN>=32_RANDOM_CHARS");
   if (config.writeMode !== "event_bus") missing.push("DUAL_WRITE_MODE=event_bus");
 
   return {
@@ -64,7 +78,12 @@ export function readiness() {
     safety: {
       rawEvidenceStored: false,
       publicWriteTools: false,
-      operatorGate: config.operatorToken ? "configured" : "not_configured",
+      operatorGate: config.operatorToken ? operatorTokenStrong ? "configured_high_entropy" : "configured_weak" : "not_configured",
+      operatorAttemptLimit: {
+        enabled: true,
+        maxFailures: OPERATOR_ATTEMPT_LIMIT,
+        windowSeconds: Math.round(OPERATOR_ATTEMPT_WINDOW_MS / 1000)
+      },
       proofLevel: readbackReady ? "dual_readback_rederived" : "local_rederived"
     },
     detail: mintReady
@@ -283,7 +302,7 @@ export async function ensureTemplateAndObject(options = {}) {
   };
 }
 
-export function requireOperator(requestOrToken) {
+export function requireOperator(requestOrToken, options = {}) {
   const supplied = typeof requestOrToken === "string"
     ? requestOrToken
     : requestOrToken?.headers?.["x-demo-operator-token"]
@@ -298,7 +317,15 @@ export function requireOperator(requestOrToken) {
       || "";
   const bearer = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
   const expected = dualConfig().operatorToken;
-  if (!expected || (supplied !== expected && bearer !== expected)) {
+  const valid = isOperatorTokenStrong(expected)
+    && (timingSafeTokenEqual(supplied, expected) || timingSafeTokenEqual(bearer, expected));
+  const limiterKey = operatorLimiterKey(requestOrToken, options);
+  if (valid) {
+    operatorFailures.delete(limiterKey);
+    return;
+  }
+  recordOperatorFailure(limiterKey);
+  if (!expected || !isOperatorTokenStrong(expected) || !valid) {
     const error = new Error("Invalid or missing operator token.");
     error.status = 403;
     throw error;
@@ -309,11 +336,53 @@ export function requireWritable(options = {}) {
   const requireObject = options.requireObject !== false;
   const status = readiness();
   const config = dualConfig();
-  const baseWritable = Boolean(config.apiKey && config.templateId && config.operatorToken && config.writeMode === "event_bus");
+  const baseWritable = Boolean(config.apiKey && config.templateId && isOperatorTokenStrong(config.operatorToken) && config.writeMode === "event_bus");
   if (!baseWritable || (requireObject && !config.objectId)) {
     const error = new Error(status.detail);
     error.status = 409;
     error.readiness = status;
+    throw error;
+  }
+}
+
+export function isOperatorTokenStrong(token) {
+  return typeof token === "string" && Buffer.byteLength(token, "utf8") >= OPERATOR_TOKEN_MIN_LENGTH;
+}
+
+function timingSafeTokenEqual(candidate, expected) {
+  if (!candidate || !expected) return false;
+  const left = Buffer.from(String(candidate), "utf8");
+  const right = Buffer.from(String(expected), "utf8");
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
+function operatorLimiterKey(requestOrToken, options = {}) {
+  if (typeof requestOrToken === "string") return `mcp:${options.source || "operator-token"}`;
+  const forwardedFor = requestOrToken?.headers?.["x-forwarded-for"]
+    || requestOrToken?.headers?.["X-Forwarded-For"]
+    || requestOrToken?.headers?.get?.("x-forwarded-for")
+    || "";
+  const realIp = requestOrToken?.headers?.["x-real-ip"]
+    || requestOrToken?.headers?.["X-Real-IP"]
+    || requestOrToken?.headers?.get?.("x-real-ip")
+    || "";
+  const socketIp = requestOrToken?.socket?.remoteAddress || "";
+  const ip = String(forwardedFor).split(",")[0].trim() || String(realIp).trim() || socketIp || "unknown";
+  return `http:${ip}`;
+}
+
+function recordOperatorFailure(key) {
+  const now = Date.now();
+  const current = operatorFailures.get(key);
+  const fresh = current && current.expiresAt > now
+    ? { count: current.count + 1, expiresAt: current.expiresAt }
+    : { count: 1, expiresAt: now + OPERATOR_ATTEMPT_WINDOW_MS };
+  operatorFailures.set(key, fresh);
+  if (fresh.count > OPERATOR_ATTEMPT_LIMIT) {
+    const error = new Error("Too many invalid operator token attempts. Try again later.");
+    error.status = 429;
+    error.code = "OPERATOR_RATE_LIMITED";
     throw error;
   }
 }

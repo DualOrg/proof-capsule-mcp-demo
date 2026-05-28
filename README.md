@@ -41,7 +41,9 @@ DUAL_ORG_ID=69b935b4187e903f826bbe71
 DUAL_WRITE_MODE=event_bus
 DUAL_PROOF_CAPSULE_TEMPLATE_ID=...
 DUAL_PROOF_CAPSULE_OBJECT_ID=...
-DEMO_OPERATOR_TOKEN=...
+DEMO_OPERATOR_TOKEN=... # minimum 32 random characters
+DEMO_OPERATOR_ATTEMPT_LIMIT=12
+DEMO_OPERATOR_ATTEMPT_WINDOW_MS=300000
 ```
 
 Create or discover the DUAL template/object:
@@ -62,7 +64,7 @@ Run one controlled operator-gated write:
 npm run proof:dual:write
 ```
 
-The write path refuses public writes, checks org balance before event-bus actions, writes only proof-envelope metadata/hashes/evidence refs, and re-reads DUAL before reporting success.
+The write path refuses public writes, uses constant-time operator-token comparison, applies a small invalid-token attempt cap, checks org balance before event-bus actions, writes only proof-envelope metadata/hashes/evidence refs, and re-reads DUAL before reporting success.
 
 ## MCP Surface
 
@@ -162,6 +164,6 @@ npm run smoke:prod -- https://your-deployment.example
 
 ## Safety
 
-Public calls do not write to DUAL. Live writes are available only through the operator-gated API/MCP tools and require server-side credentials plus `DEMO_OPERATOR_TOKEN`.
+Public calls do not write to DUAL. Live writes are available only through the operator-gated API/MCP tools and require server-side credentials plus a high-entropy `DEMO_OPERATOR_TOKEN`. The token is never echoed in responses, and weak tokens shorter than 32 characters keep live writes disabled.
 
 The `/mcp` endpoint enables permissive CORS for demo MCP clients. For a hardened production service, replace that with an explicit allow-list.

@@ -441,7 +441,7 @@ export function createMcpServer() {
       _meta: TOOL_META
     },
     async ({ operator_token, ...input }) => {
-      requireOperator(operator_token);
+      requireOperator(operator_token, { source: "sync_proof_capsule_live" });
       return jsonText(await syncProofCapsule(input));
     }
   );
@@ -463,7 +463,7 @@ export function createMcpServer() {
       _meta: TOOL_META
     },
     async ({ operator_token, ...input }) => {
-      requireOperator(operator_token);
+      requireOperator(operator_token, { source: "mint_proof_capsule_live" });
       return jsonText(await mintProofCapsule(input));
     }
   );
