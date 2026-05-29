@@ -33,6 +33,8 @@ const replay = await post("/api/workflow/replay", { scenario: "luxury_resale", c
 const evidence = await post("/api/evidence/verify", { scenario: "luxury_resale", capsule: demo.capsule });
 const transition = await post("/api/transition/plan", { scenario: "luxury_resale", capsule: demo.capsule });
 const timeline = await post("/api/capsule/timeline", { scenario: "luxury_resale", capsule: demo.capsule });
+const proofRun = await post("/api/proof/run", { scenario: "luxury_resale", capsule: demo.capsule });
+const publicVerifier = await get("/api/proof/public?scenario=luxury_resale");
 const diagnosis = await post("/api/capsule/diagnose", { scenario: "luxury_resale", capsule: demo.capsule });
 const draft = await post("/api/workflow/build", {
   title: "Supplier onboarding approval",
@@ -62,6 +64,10 @@ const ok = Boolean(
   && evidence.ok
   && transition.write_operation?.requires_operator_token
   && timeline.timeline_hash
+  && proofRun.run_id
+  && proofRun.public_verifier?.public_url
+  && publicVerifier.public_url
+  && publicVerifier.sections?.source_checks?.length > 0
   && diagnosis.healthy
   && verifiers.verifier_count >= 10
   && marketplace.module_count >= verifiers.verifier_count
@@ -73,6 +79,8 @@ const ok = Boolean(
   && mcp.tools?.includes("replay_workflow_capsule")
   && mcp.tools?.includes("build_workflow_draft")
   && mcp.tools?.includes("plan_transition_queue")
+  && mcp.tools?.includes("run_proof_capsule")
+  && mcp.tools?.includes("get_public_verifier_page")
 );
 
 console.log(JSON.stringify({
@@ -90,6 +98,8 @@ console.log(JSON.stringify({
   evidenceVerified: evidence.summary?.verified,
   transitionQueueId: transition.queue_id,
   timelineHash: timeline.timeline_hash,
+  proofRunId: proofRun.run_id,
+  publicVerifierUrl: publicVerifier.public_url,
   sourceVerifierCount: verifiers.verifier_count,
   marketplaceModuleCount: marketplace.module_count,
   workflowDraftHash: draft.draft_hash,

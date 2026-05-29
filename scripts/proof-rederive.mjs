@@ -1,6 +1,7 @@
 import {
   SCENARIOS,
   buildProofTimeline,
+  buildPublicVerifierPage,
   buildWorkflowDraft,
   compareCapsules,
   composeProofCapsule,
@@ -12,6 +13,7 @@ import {
   listSourceVerifiers,
   planTransitionQueue,
   replayWorkflowCapsule,
+  runProofCapsule,
   verifyEvidenceRefs,
   verifyProofCapsule
 } from "../src/capsule-core.mjs";
@@ -30,6 +32,8 @@ function runScenario(scenario) {
   const transitionPlan = planTransitionQueue({ scenario, capsule });
   const diagnosis = diagnoseCapsule({ scenario, capsule });
   const handoff = generateAgentHandoffPack({ scenario, capsule, endpoint: "http://127.0.0.1:4184/mcp" });
+  const proofRun = runProofCapsule({ scenario, capsule, base_url: "http://127.0.0.1:4184", endpoint: "http://127.0.0.1:4184/mcp" });
+  const publicVerifier = buildPublicVerifierPage({ scenario, capsule, base_url: "http://127.0.0.1:4184", endpoint: "http://127.0.0.1:4184/mcp" });
   const tamperedCapsule = structuredClone(capsule);
   tamperedCapsule.evidence_refs[0] = {
     ...tamperedCapsule.evidence_refs[0],
@@ -95,6 +99,14 @@ function runScenario(scenario) {
     throw new Error(`${scenario} agent handoff pack is incomplete.`);
   }
 
+  if (!proofRun.ok || !proofRun.public_verifier?.public_url || proofRun.proof_score.score < 90) {
+    throw new Error(`${scenario} proof run is incomplete.`);
+  }
+
+  if (!publicVerifier.ok || !publicVerifier.sections?.source_checks?.length || !publicVerifier.public_url.includes("/proof/")) {
+    throw new Error(`${scenario} public verifier page is incomplete.`);
+  }
+
   return {
     scenario,
     capsuleId: capsule.capsule_id,
@@ -108,6 +120,9 @@ function runScenario(scenario) {
     workflowId: workflow.workflow_id,
     workflowReplayHash: replay.hash_replay.workflow_replay_hash,
     timelineHash: timeline.timeline_hash,
+    proofRunId: proofRun.run_id,
+    publicProofId: publicVerifier.public_proof_id,
+    proofScore: proofRun.proof_score.score,
     transitionQueueId: transitionPlan.queue_id,
     tamperRejected: !tamperVerification.ok,
     missingEvidenceBlocked: missingEvidencePolicy.result === "Blocked",
@@ -135,6 +150,11 @@ const comparison = compareCapsules({
   left: composeProofCapsule({ scenario: "tradeflow_medical_devices", generated_at: "2026-05-29T00:00:00.000Z" }),
   right: composeProofCapsule({ scenario: "tradeflow_medical_devices", generated_at: "2026-05-29T00:00:00.000Z", evidence_refs: composeProofCapsule({ scenario: "tradeflow_medical_devices", generated_at: "2026-05-29T00:00:00.000Z" }).evidence_refs.slice(0, 6) })
 });
+const publicVerifier = buildPublicVerifierPage({
+  scenario: "tradeflow_medical_devices",
+  base_url: "http://127.0.0.1:4184",
+  endpoint: "http://127.0.0.1:4184/mcp"
+});
 
 if (uniqueCapsuleIds.size !== results.length || uniqueSubjectIds.size !== results.length) {
   throw new Error("Advertised scenarios are not producing distinct capsules.");
@@ -156,6 +176,10 @@ if (comparison.same_content || comparison.changed_hashes.length === 0) {
   throw new Error("Capsule compare did not detect a material change.");
 }
 
+if (!publicVerifier.public_url || !publicVerifier.sections?.policy_decision?.decision_content_hash) {
+  throw new Error("Public verifier page model is incomplete.");
+}
+
 console.log(JSON.stringify({
   ok: true,
   scenarioCount: results.length,
@@ -164,6 +188,7 @@ console.log(JSON.stringify({
   marketplaceModuleCount: marketplace.module_count,
   workflowDraftHash: draft.draft_hash,
   compareHash: comparison.compare_hash,
+  publicVerifierUrl: publicVerifier.public_url,
   primary: results[0],
   scenarios: results.map((result) => ({
     scenario: result.scenario,
@@ -174,6 +199,9 @@ console.log(JSON.stringify({
     workflowId: result.workflowId,
     workflowReplayHash: result.workflowReplayHash,
     timelineHash: result.timelineHash,
+    proofRunId: result.proofRunId,
+    publicProofId: result.publicProofId,
+    proofScore: result.proofScore,
     transitionQueueId: result.transitionQueueId,
     contentHash: result.contentHash,
     tamperRejected: result.tamperRejected,

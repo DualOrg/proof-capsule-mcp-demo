@@ -19,6 +19,7 @@ for (const required of [
   "diagnose_capsule",
   "evaluate_capsule_policy",
   "generate_agent_handoff_pack",
+  "get_public_verifier_page",
   "get_current_live_capsule",
   "get_capsule_handoff",
   "get_capsule_status",
@@ -32,6 +33,7 @@ for (const required of [
   "plan_transition_queue",
   "red_team_capsule",
   "replay_workflow_capsule",
+  "run_proof_capsule",
   "sync_proof_capsule_live",
   "verify_evidence_refs",
   "verify_proof_capsule"
@@ -64,6 +66,7 @@ for (const required of [
   "capsule://source-verifiers",
   "capsule://verifier-marketplace",
   "capsule://operator-runbook",
+  "capsule://proof-runbook",
   "capsule://workflows"
 ]) {
   if (!resourceUris.includes(required)) throw new Error(`Missing resource: ${required}`);
@@ -76,10 +79,13 @@ if (!templates.resourceTemplates.some((template) => template.uriTemplate === "ca
 if (!templates.resourceTemplates.some((template) => template.uriTemplate === "capsule://workflow/{scenario}")) {
   throw new Error("Missing workflow resource template.");
 }
+if (!templates.resourceTemplates.some((template) => template.uriTemplate === "capsule://public-proof/{scenario}")) {
+  throw new Error("Missing public proof resource template.");
+}
 
 const prompts = await client.listPrompts();
 const promptNames = prompts.prompts.map((prompt) => prompt.name);
-for (const required of ["proof_capsule_review", "mcp_client_handoff", "red_team_capsule_boundary", "design_proof_capsule_workflow", "operate_capsule_transition", "compare_capsule_versions"]) {
+for (const required of ["proof_capsule_review", "mcp_client_handoff", "red_team_capsule_boundary", "design_proof_capsule_workflow", "operate_capsule_transition", "compare_capsule_versions", "publish_proof_capsule_verifier_page"]) {
   if (!promptNames.includes(required)) throw new Error(`Missing prompt: ${required}`);
 }
 
@@ -147,6 +153,22 @@ const timeline = await client.callTool({
 });
 if (!timeline.structuredContent?.timeline_hash || !timeline.structuredContent?.events?.length) {
   throw new Error("Proof timeline did not render lifecycle events.");
+}
+
+const proofRun = await client.callTool({
+  name: "run_proof_capsule",
+  arguments: { scenario: "tradeflow_medical_devices", capsule, base_url: "http://127.0.0.1:4184", endpoint: url }
+});
+if (!proofRun.structuredContent?.run_id || !proofRun.structuredContent?.public_verifier?.public_url || proofRun.structuredContent?.proof_score?.score < 90) {
+  throw new Error("One-click proof run is incomplete.");
+}
+
+const publicVerifier = await client.callTool({
+  name: "get_public_verifier_page",
+  arguments: { scenario: "tradeflow_medical_devices", capsule, base_url: "http://127.0.0.1:4184", endpoint: url }
+});
+if (!publicVerifier.structuredContent?.public_url || !publicVerifier.structuredContent?.sections?.source_checks?.length) {
+  throw new Error("Public verifier page model is incomplete.");
 }
 
 const transition = await client.callTool({
@@ -266,6 +288,8 @@ console.log(JSON.stringify({
   workflowReplayHash: replay.structuredContent.hash_replay.workflow_replay_hash,
   evidenceVerified: evidence.structuredContent.summary.verified,
   timelineHash: timeline.structuredContent.timeline_hash,
+  proofRunId: proofRun.structuredContent.run_id,
+  publicVerifierUrl: publicVerifier.structuredContent.public_url,
   transitionQueueId: transition.structuredContent.queue_id,
   sourceVerifierCount: verifiers.structuredContent.verifier_count,
   marketplaceModuleCount: marketplace.structuredContent.module_count,

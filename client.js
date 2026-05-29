@@ -3,6 +3,7 @@ let liveStatus = null;
 let currentWorkflow = null;
 let lastTransitionPlan = null;
 let compareBase = null;
+let lastProofRun = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -275,6 +276,66 @@ function renderHandoff(payload) {
   $("output").textContent = JSON.stringify(payload, null, 2);
 }
 
+function renderProofRun(payload, outputTitle = "Proof run") {
+  lastProofRun = payload;
+  const writeExecution = payload.write_boundary?.write_execution || payload.capsule?.write_boundary?.write_execution || "";
+  const boundaryLabel = !writeExecution || writeExecution === "none"
+    ? "public writes off"
+    : writeExecution;
+  $("proofRunPanel").hidden = false;
+  $("proofRunStatus").textContent = `${payload.status || payload.proof_score?.status || "ready"} / ${payload.proof_score?.score ?? "-"}%`;
+  $("proofRunStatus").className = payload.ok === false ? "warn-text" : "safe-text";
+  $("proofRunMetrics").innerHTML = [
+    ["Proof", payload.public_proof_id || payload.public_verifier?.public_proof_id || payload.run_id || "-"],
+    ["Decision", payload.summary?.decision || payload.capsule?.decision?.result || payload.public_verifier?.summary?.decision || "-"],
+    ["Score", `${payload.proof_score?.score ?? "-"} / ${payload.proof_score?.max_score ?? 100}`],
+    ["Boundary", boundaryLabel]
+  ].map(([label, value]) => `
+    <div class="proof-metric">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `).join("");
+
+  const steps = payload.steps || payload.sections?.workflow_replay?.replay_steps?.map((step) => ({
+    step: step.name,
+    pass: step.pass,
+    detail: step.detail
+  })) || [];
+  $("proofRunSteps").innerHTML = steps.map((step) => `
+    <div class="workflow-row ${step.pass ? "verified" : "missing"}">
+      <span>${escapeHtml(step.pass ? "passed" : "needs work")}</span>
+      <strong>${escapeHtml(step.step || step.name)}</strong>
+      <p>${escapeHtml(step.detail || "")}</p>
+    </div>
+  `).join("");
+
+  const publicUrl = payload.public_url || payload.public_verifier?.public_url || payload.links?.public_url;
+  const linkRows = [
+    ["Public verifier", publicUrl],
+    ["MCP endpoint", payload.links?.mcp_endpoint || payload.public_verifier?.links?.mcp_endpoint || `${window.location.origin}/mcp`],
+    ...((payload.links?.dual || payload.public_verifier?.links?.dual || []).map((link) => [link.label, link.url]))
+  ].map(([label, href]) => [label, safeExternalUrl(href), href]).filter(([, safeHref]) => Boolean(safeHref));
+  $("proofRunLinks").innerHTML = linkRows.map(([label, safeHref, originalHref]) => `
+    <div class="link-row">
+      <span>${escapeHtml(label)}</span>
+      <a href="${escapeAttribute(safeHref)}" target="_blank" rel="noreferrer noopener">${escapeHtml(originalHref)}</a>
+    </div>
+  `).join("");
+
+  const sourceChecks = payload.evidence?.results || payload.sections?.source_checks || payload.public_verifier?.sections?.source_checks || [];
+  $("proofRunSources").innerHTML = sourceChecks.slice(0, 8).map((item) => `
+    <div class="workflow-row ${escapeAttribute(item.status)}">
+      <span>${escapeHtml(item.status)}</span>
+      <strong>${escapeHtml(item.type)} / ${escapeHtml(item.source || "missing")}</strong>
+      <p>${escapeHtml(item.recheck_rule || item.proves || "")}</p>
+    </div>
+  `).join("");
+
+  $("outputTitle").textContent = outputTitle;
+  $("output").textContent = JSON.stringify(payload, null, 2);
+}
+
 function renderStatus(status) {
   liveStatus = status;
   $("dualStatus").textContent = status?.readbackReady ? "DUAL live" : "Local proof";
@@ -388,6 +449,53 @@ async function refreshOperationalPanels(capsule = currentCapsule) {
     diagnose(false),
     loadMarketplace()
   ]);
+}
+
+async function runProof() {
+  const payload = await jsonFetch("/api/proof/run", {
+    method: "POST",
+    body: JSON.stringify({
+      scenario: scenario(),
+      capsule: currentCapsule,
+      workflow_definition: currentWorkflow || undefined,
+      base_url: window.location.origin,
+      endpoint: `${window.location.origin}/mcp`
+    })
+  });
+  renderProofRun(payload, "One-click proof run");
+  return payload;
+}
+
+function scenarioFromProofPath(capsuleId = "") {
+  if (capsuleId.includes("INSURANCE")) return "insurance_claim";
+  if (capsuleId.includes("AGENT-MANDATE")) return "agent_mandate_purchase";
+  if (capsuleId.includes("LUXURY")) return "luxury_resale";
+  if (capsuleId.includes("CARBON")) return "carbon_credit";
+  return "tradeflow_medical_devices";
+}
+
+async function loadPublicProofRoute() {
+  const parts = window.location.pathname.split("/").filter(Boolean);
+  if (parts[0] !== "proof") return false;
+  const capsuleId = decodeURIComponent(parts[1] || "");
+  const params = new URLSearchParams(window.location.search);
+  const requestedScenario = params.get("scenario") || scenarioFromProofPath(capsuleId);
+  $("scenarioSelect").value = requestedScenario;
+  const payload = await jsonFetch(`/api/proof/public?scenario=${encodeURIComponent(requestedScenario)}&proof_id=${encodeURIComponent(capsuleId)}`);
+  currentWorkflow = null;
+  renderCapsule(payload.capsule, "Public verifier page");
+  renderProofRun(payload, "Public verifier page");
+  renderEvidenceVerification({ ok: payload.sections?.source_checks?.every((item) => item.status === "verified"), results: payload.sections?.source_checks || [] });
+  renderTimeline({ events: payload.sections?.timeline || [] });
+  await loadWorkflow(payload.capsule);
+  await diagnose(false);
+  return true;
+}
+
+function openProofPage() {
+  if (!currentCapsule?.capsule_id) return;
+  const url = `/proof/${encodeURIComponent(currentCapsule.capsule_id)}?scenario=${encodeURIComponent(scenario())}&content_hash=${encodeURIComponent(short(currentCapsule.hashes?.capsule_content_hash))}`;
+  window.location.assign(url);
 }
 
 async function attachEvidence() {
@@ -584,6 +692,8 @@ function showError(error) {
 
 $("composeBtn").addEventListener("click", () => compose().catch(showError));
 $("verifyBtn").addEventListener("click", () => verify().catch(showError));
+$("runProofBtn").addEventListener("click", () => runProof().catch(showError));
+$("openProofBtn").addEventListener("click", () => openProofPage());
 $("redTeamBtn").addEventListener("click", () => redTeam().catch(showError));
 $("syncBtn").addEventListener("click", () => syncLive().catch(showError));
 $("mintBtn").addEventListener("click", () => mintLive().catch(showError));
@@ -604,5 +714,8 @@ $("scenarioSelect").addEventListener("change", () => compose().catch(showError))
 
 Promise.resolve()
   .then(loadStatus)
-  .then((status) => status.readbackReady ? loadCurrentLive() : compose())
+  .then(async (status) => {
+    const routed = await loadPublicProofRoute();
+    if (!routed) return status.readbackReady ? loadCurrentLive() : compose();
+  })
   .catch(showError);

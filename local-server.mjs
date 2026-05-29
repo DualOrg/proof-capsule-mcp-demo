@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   buildProofTimeline,
+  buildPublicVerifierPage,
   buildWorkflowDraft,
   compareCapsules,
   composeProofCapsule,
@@ -17,6 +18,7 @@ import {
   planTransitionQueue,
   redTeamCapsule,
   replayWorkflowCapsule,
+  runProofCapsule,
   verifyEvidenceRefs,
   verifyProofCapsule
 } from "./src/capsule-core.mjs";
@@ -173,6 +175,32 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, buildProofTimeline(await readBody(req)));
   }
 
+  if (url.pathname === "/api/proof/public") {
+    if (req.method === "GET") {
+      return sendJson(res, 200, buildPublicVerifierPage({
+        scenario: url.searchParams.get("scenario") || undefined,
+        proof_id: url.searchParams.get("proof_id") || undefined,
+        base_url: `${url.protocol}//${url.host}`,
+        endpoint: `${url.protocol}//${url.host}/mcp`
+      }));
+    }
+    if (req.method === "POST") {
+      return sendJson(res, 200, buildPublicVerifierPage({
+        ...(await readBody(req)),
+        base_url: `${url.protocol}//${url.host}`,
+        endpoint: `${url.protocol}//${url.host}/mcp`
+      }));
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/proof/run") {
+    return sendJson(res, 200, runProofCapsule({
+      ...(await readBody(req)),
+      base_url: `${url.protocol}//${url.host}`,
+      endpoint: `${url.protocol}//${url.host}/mcp`
+    }));
+  }
+
   if (req.method === "POST" && url.pathname === "/api/capsule/compare") {
     return sendJson(res, 200, compareCapsules(await readBody(req)));
   }
@@ -233,7 +261,9 @@ async function handleApi(req, res, url) {
 }
 
 async function serveStatic(req, res, url) {
-  const pathname = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
+  const pathname = url.pathname === "/" || url.pathname.startsWith("/proof/")
+    ? "/index.html"
+    : decodeURIComponent(url.pathname);
   const fullPath = path.normalize(path.join(__dirname, pathname));
   if (!fullPath.startsWith(__dirname)) {
     res.writeHead(403);

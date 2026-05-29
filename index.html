@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Proof Capsule Studio</title>
-    <link rel="stylesheet" href="./styles.css?v=0.4.1">
+    <link rel="stylesheet" href="/styles.css?v=0.5.1">
   </head>
   <body>
     <header class="topbar">
@@ -33,6 +33,28 @@
         </div>
       </section>
 
+      <section id="proofRunPanel" class="panel proof-run" hidden>
+        <div class="panel-title">
+          <span>Public verifier</span>
+          <strong id="proofRunStatus">Not run</strong>
+        </div>
+        <div id="proofRunMetrics" class="proof-metrics"></div>
+        <div class="proof-run-grid">
+          <div>
+            <h3>Proof run steps</h3>
+            <div id="proofRunSteps" class="workflow-stack"></div>
+          </div>
+          <div>
+            <h3>Shareable proof</h3>
+            <div id="proofRunLinks" class="link-stack"></div>
+          </div>
+          <div>
+            <h3>Source checks</h3>
+            <div id="proofRunSources" class="workflow-stack"></div>
+          </div>
+        </div>
+      </section>
+
       <section class="workspace">
         <aside class="panel controls">
           <div class="panel-title">
@@ -49,6 +71,8 @@
           </select>
           <button id="composeBtn" type="button">Compose capsule</button>
           <button id="verifyBtn" type="button">Verify hashes</button>
+          <button id="runProofBtn" type="button">Run proof</button>
+          <button id="openProofBtn" type="button">Open public page</button>
           <button id="redTeamBtn" type="button">Run red-team</button>
           <div class="control-group">
             <div class="panel-title compact-title">
@@ -258,6 +282,6 @@
       </section>
     </main>
 
-    <script type="module" src="./client.js?v=0.4.1"></script>
+    <script type="module" src="/client.js?v=0.5.1"></script>
   </body>
 </html>

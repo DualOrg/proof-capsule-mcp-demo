@@ -8,6 +8,7 @@ import {
   SERVICE_VERSION,
   WRITE_BOUNDARY,
   buildProofTimeline,
+  buildPublicVerifierPage,
   buildWorkflowDraft,
   capsuleToMarkdown,
   compareCapsules,
@@ -24,6 +25,7 @@ import {
   planTransitionQueue,
   redTeamCapsule,
   replayWorkflowCapsule,
+  runProofCapsule,
   scorecard,
   verifyEvidenceRefs,
   verifyProofCapsule
@@ -293,6 +295,45 @@ export function createMcpServer() {
   );
 
   server.registerResource(
+    "proof-runbook",
+    "capsule://proof-runbook",
+    {
+      title: "Proof Capsule Public Proof Runbook",
+      description: "Read-only runbook for one-click proof runs and public verifier pages.",
+      mimeType: "application/json"
+    },
+    async (uri) => ({
+      contents: [{
+        uri: uri.href,
+        text: JSON.stringify({
+          ok: true,
+          public_flow: [
+            "run_proof_capsule",
+            "review proof_score and steps",
+            "open public_verifier.public_url",
+            "share get_public_verifier_page output with humans or agents",
+            "use plan_transition_queue and operator-gated sync only after approval"
+          ],
+          public_page_sections: [
+            "claims",
+            "evidence_refs",
+            "source_checks",
+            "policy_decision",
+            "workflow_replay",
+            "dual_anchor",
+            "hashes",
+            "timeline",
+            "transition_plan"
+          ],
+          public_writes: false,
+          raw_payload_stored: false,
+          boundary: WRITE_BOUNDARY
+        }, null, 2)
+      }]
+    })
+  );
+
+  server.registerResource(
     "dual-status",
     "capsule://dual/status",
     {
@@ -368,6 +409,39 @@ export function createMcpServer() {
       contents: [{
         uri: uri.href,
         text: JSON.stringify(getWorkflowDefinition({ scenario: variables.scenario }), null, 2)
+      }]
+    })
+  );
+
+  server.registerResource(
+    "public-proof-template",
+    new ResourceTemplate("capsule://public-proof/{scenario}", {
+      list: async () => ({
+        resources: SCENARIOS.map((scenario) => ({
+          uri: `capsule://public-proof/${scenario}`,
+          name: `${scenario}-public-proof`,
+          title: `${scenario.replaceAll("_", " ")} Public Verifier Page`,
+          description: "Public verifier page model for this Proof Capsule scenario.",
+          mimeType: "application/json"
+        }))
+      }),
+      complete: {
+        scenario: (value) => SCENARIOS.filter((scenario) => scenario.startsWith(value || ""))
+      }
+    }),
+    {
+      title: "Scenario Public Verifier Page",
+      description: "Read a public verifier page model by scenario slug.",
+      mimeType: "application/json"
+    },
+    async (uri, variables) => ({
+      contents: [{
+        uri: uri.href,
+        text: JSON.stringify(buildPublicVerifierPage({
+          scenario: variables.scenario,
+          base_url: "https://proof-capsule-mcp-demo.vercel.app",
+          endpoint: "https://proof-capsule-mcp-demo.vercel.app/mcp"
+        }), null, 2)
       }]
     })
   );
@@ -526,6 +600,44 @@ export function createMcpServer() {
       _meta: TOOL_META
     },
     async ({ endpoint }) => jsonText(handoff(endpoint))
+  );
+
+  server.registerTool(
+    "run_proof_capsule",
+    {
+      title: "Run Proof Capsule",
+      description: "One-click read-only proof run: verify hashes, policy, evidence, workflow replay, transition plan, recovery, handoff, and public verifier page.",
+      inputSchema: {
+        scenario: scenarioSchema.optional(),
+        capsule: z.record(z.string(), z.unknown()).optional(),
+        workflow_definition: z.record(z.string(), z.unknown()).optional(),
+        endpoint: z.string().optional(),
+        base_url: z.string().optional(),
+        action: z.string().optional(),
+        transition_action: z.string().optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(runProofCapsule(input))
+  );
+
+  server.registerTool(
+    "get_public_verifier_page",
+    {
+      title: "Get Public Verifier Page",
+      description: "Return the shareable public verifier page model for a Proof Capsule without executing a write.",
+      inputSchema: {
+        scenario: scenarioSchema.optional(),
+        capsule: z.record(z.string(), z.unknown()).optional(),
+        workflow_definition: z.record(z.string(), z.unknown()).optional(),
+        endpoint: z.string().optional(),
+        base_url: z.string().optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(buildPublicVerifierPage(input))
   );
 
   server.registerTool(
@@ -864,6 +976,23 @@ export function createMcpServer() {
       `Compare Proof Capsule versions ${left || "left"} and ${right || "right"}.`,
       "Use compare_capsules, then explain evidence changes, state transition changes, policy/decision changes, and which hashes changed.",
       "If a change requires live source recheck or operator-gated DUAL sync, call that out explicitly."
+    ].join("\n"))
+  );
+
+  server.registerPrompt(
+    "publish_proof_capsule_verifier_page",
+    {
+      title: "Publish Proof Capsule Verifier Page",
+      description: "Guide an agent through generating and sharing a public proof page without weakening the write boundary.",
+      argsSchema: {
+        scenario: z.string().optional()
+      }
+    },
+    ({ scenario }) => textPrompt([
+      `Prepare a public verifier page for ${scenario || "the supplied Proof Capsule"}.`,
+      "Call run_proof_capsule first, inspect proof_score, source checks, replay steps, and DUAL anchor links.",
+      "Share the public verifier URL only if publicWrites=false and no raw evidence payloads or operator tokens are included.",
+      "If the proof is not ready, return the recovery actions instead of claiming the page is verifier-ready."
     ].join("\n"))
   );
 

@@ -4,7 +4,7 @@ Proof Capsule is the use-case-agnostic DUAL primitive behind TradeFlow-style pro
 
 This sandbox exposes that primitive through a Streamable HTTP MCP endpoint and a small UI. In production it can read from a live DUAL object and execute operator-gated event-bus mint/sync writes.
 
-The v0.4 model adds the operator workflow layer on top of replay: workflow builder, evidence intake checks, transition dry-runs, recovery actions, lifecycle timeline, verifier modules, capsule compare, and agent handoff packs. The v0.4.1 hardening pass adds safe external-link rendering, bounded JSON payload handling, and clearer runtime-scoped operator attempt-limit reporting. Live writes remain operator-gated.
+The v0.5.1 model adds the public proof layer on top of the operator workflow: one-click proof runs, shareable verifier pages under `/proof/...`, public DUAL/block-explorer links, proof-readiness scoring, and MCP tools/resources/prompts for publishing a verifier-ready proof page. Live writes remain operator-gated.
 
 ## Scope
 
@@ -30,6 +30,20 @@ Then in another terminal:
 ```bash
 npm run smoke:mcp
 npm run proof:rederive
+```
+
+Run the public proof flow from the UI:
+
+```text
+Open http://127.0.0.1:4184
+Click Run proof
+Click Open public page
+```
+
+The public verifier route is also directly addressable:
+
+```text
+http://127.0.0.1:4184/proof/PC-LUXURY-RESALE-001?scenario=luxury_resale
 ```
 
 ## Live DUAL Setup
@@ -80,6 +94,8 @@ Tools:
 - `evaluate_capsule_policy`
 - `red_team_capsule`
 - `get_capsule_handoff`
+- `run_proof_capsule`
+- `get_public_verifier_page`
 - `list_workflow_templates`
 - `get_workflow_definition`
 - `replay_workflow_capsule`
@@ -108,11 +124,13 @@ Resources:
 - `capsule://source-verifiers`
 - `capsule://verifier-marketplace`
 - `capsule://operator-runbook`
+- `capsule://proof-runbook`
 
 Resource template:
 
 - `capsule://demo/{scenario}`
 - `capsule://workflow/{scenario}`
+- `capsule://public-proof/{scenario}`
 - Covered scenarios: `tradeflow_medical_devices`, `insurance_claim`, `agent_mandate_purchase`, `luxury_resale`, `carbon_credit`
 
 Prompts:
@@ -123,6 +141,7 @@ Prompts:
 - `design_proof_capsule_workflow`
 - `operate_capsule_transition`
 - `compare_capsule_versions`
+- `publish_proof_capsule_verifier_page`
 
 ## Workflow Model
 
@@ -162,6 +181,23 @@ The app is now usable as a small operating console, not only a verifier:
 - **Agent handoff:** packages MCP calls, resources, next allowed actions, replay status, timeline hash, and write-boundary caveats for another agent.
 
 All of these are public read/dry-run operations. The only state-changing paths remain `sync_proof_capsule_live`, `mint_proof_capsule_live`, `POST /api/capsules/sync`, and `POST /api/capsules/mint`, and those still require the operator token.
+
+## Public Proof Layer
+
+`run_proof_capsule` is the one-click proof path. It composes or accepts a capsule, re-derives hashes, evaluates policy, verifies evidence refs, replays the workflow, builds the timeline, diagnoses recovery actions, dry-runs the transition queue, generates an agent handoff pack, scores readiness, and returns a public verifier page model.
+
+`get_public_verifier_page` is the shareable read side. It returns the capsule summary, claims, evidence refs, source checks, policy decision, state transition, workflow replay, DUAL anchor, hash verification block, timeline, transition plan, recovery actions, and source links. The UI renders this at `/proof/:capsuleId`.
+
+The proof score is a 100-point operator-readiness score:
+
+- 25 hash re-derivation
+- 20 policy result
+- 20 evidence refs
+- 15 workflow replay
+- 10 transition readiness
+- 10 public-write boundary
+
+`Approved with review` decisions can still score 98/100 when hashes, evidence, replay, transition planning, and public-write boundaries are clean. That is deliberate: the review requirement is visible instead of silently failing an otherwise publishable proof.
 
 ## Proof Semantics
 
@@ -213,6 +249,10 @@ The app is Vercel-ready. Public endpoints:
 - `POST /api/capsule/diagnose`
 - `POST /api/capsule/timeline`
 - `POST /api/capsule/compare`
+- `POST /api/proof/run`
+- `GET /api/proof/public?scenario=...`
+- `POST /api/proof/public`
+- `GET /proof/:capsuleId?scenario=...`
 - `GET /api/workflow/definition?scenario=...`
 - `POST /api/workflow/build`
 - `POST /api/workflow/replay`

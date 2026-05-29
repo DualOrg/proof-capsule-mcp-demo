@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const SERVICE_NAME = "dual-proof-capsule-mcp";
-export const SERVICE_VERSION = "0.4.1";
+export const SERVICE_VERSION = "0.5.1";
 export const CAPSULE_SCHEMA_VERSION = "proof-capsule.v0.1";
 export const CUSTOM_WORKFLOW_SCHEMA_VERSION = "proof-capsule-workflow-draft.v0.1";
 export const GENERATED_AT = "2026-05-29T00:00:00.000Z";
@@ -2082,6 +2082,227 @@ export function generateAgentHandoffPack(input = {}) {
   };
 }
 
+export function runProofCapsule(input = {}) {
+  const capsule = input.capsule?.schema_version ? input.capsule : composeProofCapsule(input);
+  const scenario = resolveWorkflowScenario(input, capsule);
+  const workflow = resolveWorkflowDefinition(input, capsule, scenario);
+  const verification = verifyProofCapsule({ capsule });
+  const policy = evaluateCapsulePolicy({ capsule });
+  const evidence = verifyEvidenceRefs({ scenario, capsule, workflow_definition: workflow });
+  const replay = replayWorkflowCapsule({ scenario, capsule, workflow_definition: workflow });
+  const timeline = buildProofTimeline({ scenario, capsule, workflow_definition: workflow });
+  const diagnosis = diagnoseCapsule({ scenario, capsule, workflow_definition: workflow });
+  const transition_plan = planTransitionQueue({
+    scenario,
+    capsule,
+    workflow_definition: workflow,
+    dry_run: true,
+    action: input.action || input.transition_action
+  });
+  const handoff = generateAgentHandoffPack({
+    scenario,
+    capsule,
+    workflow_definition: input.workflow_definition?.workflow_id ? workflow : undefined,
+    endpoint: input.endpoint || "https://proof-capsule-mcp-demo.vercel.app/mcp"
+  });
+  const proof_score = scoreProofReadiness({
+    verification,
+    policy,
+    evidence,
+    replay,
+    transition_plan,
+    diagnosis,
+    capsule
+  });
+  const public_verifier = buildPublicVerifierPage({
+    scenario,
+    capsule,
+    workflow_definition: input.workflow_definition?.workflow_id ? workflow : undefined,
+    base_url: input.base_url,
+    endpoint: input.endpoint
+  });
+  const steps = [
+    proofStep("compose_capsule", true, capsule.hashes?.capsule_content_hash),
+    proofStep("verify_hashes", verification.ok, verification.verification_level),
+    proofStep("evaluate_policy", policy.result !== "Blocked", `${policy.result} / ${policy.code}`),
+    proofStep("verify_evidence", evidence.ok, `${evidence.summary.verified} verified / ${evidence.summary.missing} missing`),
+    proofStep("replay_workflow", replay.ok, replay.hash_replay?.workflow_replay_hash),
+    proofStep("plan_transition", transition_plan.status !== "blocked", transition_plan.status),
+    proofStep("diagnose_recovery", diagnosis.healthy, diagnosis.next_safe_action),
+    proofStep("publish_verifier_page", public_verifier.ok, public_verifier.public_url)
+  ];
+
+  return {
+    ok: steps.every((step) => step.pass),
+    run_id: `proof-run:${shortHash(hashValue({ capsule_id: capsule.capsule_id, content_hash: capsule.hashes?.capsule_content_hash, replay_hash: replay.hash_replay?.workflow_replay_hash }))}`,
+    scenario,
+    capsule_id: capsule.capsule_id,
+    status: proof_score.status,
+    generated_at: new Date().toISOString(),
+    capsule,
+    proof_score,
+    steps,
+    verification,
+    policy,
+    evidence,
+    replay,
+    timeline,
+    diagnosis,
+    transition_plan,
+    public_verifier,
+    handoff,
+    write_boundary: capsule.write_boundary,
+    caveats: [
+      "This proof run is read-only unless an authorised operator separately executes the operator-gated sync or mint path.",
+      "Public verifier pages expose proof-envelope hashes, refs, state, source contracts, and DUAL links; raw evidence remains in source systems.",
+      "Point-in-time source facts must be rechecked before transfer, settlement, retirement, or other action-critical reliance."
+    ]
+  };
+}
+
+export function buildPublicVerifierPage(input = {}) {
+  const capsule = input.capsule?.schema_version ? input.capsule : composeProofCapsule(input);
+  const scenario = resolveWorkflowScenario(input, capsule);
+  const workflow = resolveWorkflowDefinition(input, capsule, scenario);
+  const verification = verifyProofCapsule({ capsule });
+  const policy = evaluateCapsulePolicy({ capsule });
+  const evidence = verifyEvidenceRefs({ scenario, capsule, workflow_definition: workflow });
+  const replay = replayWorkflowCapsule({ scenario, capsule, workflow_definition: workflow });
+  const timeline = buildProofTimeline({ scenario, capsule, workflow_definition: workflow });
+  const diagnosis = diagnoseCapsule({ scenario, capsule, workflow_definition: workflow });
+  const transition_plan = planTransitionQueue({
+    scenario,
+    capsule,
+    workflow_definition: workflow,
+    dry_run: true,
+    action: input.action || input.transition_action
+  });
+  const proof_score = scoreProofReadiness({
+    verification,
+    policy,
+    evidence,
+    replay,
+    transition_plan,
+    diagnosis,
+    capsule
+  });
+  const publicProofId = `proof:${shortHash(capsule.hashes?.capsule_content_hash)}`;
+  const publicUrl = publicProofUrl(input.base_url, capsule, scenario);
+  const sourceLinks = [
+    ...(capsule.evidence_refs || []).map((ref) => ({
+      label: ref.evidence_id,
+      type: ref.type,
+      source: ref.source,
+      url: ref.explorer_url || null,
+      hash: ref.hash || null,
+      summary: ref.summary || ""
+    })),
+    ...(capsule.external_anchors || []).map((anchor) => ({
+      label: anchor.anchor_id,
+      type: anchor.kind,
+      source: anchor.source_of_truth || anchor.source || anchor.chain || anchor.mode || "external_anchor",
+      url: anchor.explorer_url || null,
+      hash: anchor.tx_signature || anchor.ref || null,
+      summary: anchor.caveat || ""
+    }))
+  ];
+  const dualLinks = [
+    { label: "DUAL object", url: capsule.dual_anchor?.object_explorer_url || null },
+    { label: "DUAL template", url: capsule.dual_anchor?.template_explorer_url || null },
+    { label: "DUAL L2 state", url: capsule.dual_anchor?.l2_state_search_url || null }
+  ].filter((link) => Boolean(link.url));
+
+  return {
+    ok: true,
+    page_type: "public_verifier",
+    public_proof_id: publicProofId,
+    public_url: publicUrl,
+    scenario,
+    capsule_id: capsule.capsule_id,
+    capsule,
+    summary: {
+      title: capsule.subject?.label || capsule.capsule_id,
+      subject_id: capsule.subject?.subject_id || "",
+      capsule_type: capsule.capsule_type,
+      decision: capsule.decision?.result || "",
+      decision_code: capsule.decision?.code || "",
+      state_transition: `${capsule.state_transition?.from_state || "-"} -> ${capsule.state_transition?.to_state || "-"}`,
+      verification_level: verification.verification_level,
+      content_hash: capsule.hashes?.capsule_content_hash,
+      envelope_hash: capsule.hashes?.capsule_envelope_hash,
+      generated_at: capsule.generated_at
+    },
+    proof_score,
+    sections: {
+      claims: (capsule.claims || []).map((claim) => ({
+        claim_id: claim.claim_id,
+        type: claim.type,
+        required: Boolean(claim.required),
+        statement: claim.statement,
+        expected_source: claim.expected_source
+      })),
+      evidence_refs: (capsule.evidence_refs || []).map((ref) => ({
+        evidence_id: ref.evidence_id,
+        type: ref.type,
+        source: ref.source,
+        hash: ref.hash,
+        summary: ref.summary,
+        ref: ref.ref,
+        explorer_url: ref.explorer_url || null,
+        point_in_time: ref.point_in_time || null
+      })),
+      source_checks: evidence.results,
+      policy_decision: {
+        result: policy.result,
+        code: policy.code,
+        reason: policy.reason,
+        missing_required_anchor_types: policy.missing_required_anchor_types,
+        unsupported_sources: policy.unsupported_sources,
+        decision_content_hash: policy.decision_content_hash
+      },
+      state_transition: capsule.state_transition,
+      workflow_replay: {
+        ok: replay.ok,
+        workflow_id: replay.workflow_id,
+        workflow_title: replay.workflow_title,
+        replay_steps: replay.replay_steps,
+        workflow_replay_hash: replay.hash_replay?.workflow_replay_hash,
+        point_in_time_rechecks: replay.point_in_time_rechecks
+      },
+      dual_anchor: {
+        object_id: capsule.dual_anchor?.object_id || capsule.dual_anchor?.ref || "",
+        template_id: capsule.dual_anchor?.template_id || "",
+        state_hash: capsule.dual_anchor?.state_hash || "",
+        integrity_hash: capsule.dual_anchor?.integrity_hash || "",
+        mode: capsule.dual_anchor?.mode || "",
+        links: dualLinks
+      },
+      hashes: verification.hashes,
+      timeline: timeline.events,
+      transition_plan: {
+        queue_id: transition_plan.queue_id,
+        status: transition_plan.status,
+        requires_operator_token: transition_plan.write_operation?.requires_operator_token === true,
+        public_writes: false
+      },
+      recovery: {
+        healthy: diagnosis.healthy,
+        next_safe_action: diagnosis.next_safe_action,
+        actions: diagnosis.recovery_actions
+      },
+      source_links: sourceLinks
+    },
+    links: {
+      public_url: publicUrl,
+      mcp_endpoint: input.endpoint || "/mcp",
+      dual: dualLinks,
+      sources: sourceLinks.filter((link) => Boolean(link.url))
+    },
+    write_boundary: capsule.write_boundary,
+    verifier_statement: "This public verifier page lets humans and agents re-check the capsule proof envelope without executing DUAL writes."
+  };
+}
+
 export function serviceDescriptor() {
   return {
     ok: true,
@@ -2103,6 +2324,8 @@ export function serviceDescriptor() {
       "evaluate_capsule_policy",
       "red_team_capsule",
       "get_capsule_handoff",
+      "run_proof_capsule",
+      "get_public_verifier_page",
       "list_workflow_templates",
       "get_workflow_definition",
       "replay_workflow_capsule",
@@ -2125,16 +2348,18 @@ export function serviceDescriptor() {
       "capsule://workflows",
       "capsule://source-verifiers",
       "capsule://verifier-marketplace",
-      "capsule://operator-runbook"
+      "capsule://operator-runbook",
+      "capsule://proof-runbook"
     ],
-    resourceTemplates: ["capsule://demo/{scenario}", "capsule://workflow/{scenario}"],
+    resourceTemplates: ["capsule://demo/{scenario}", "capsule://workflow/{scenario}", "capsule://public-proof/{scenario}"],
     prompts: [
       "proof_capsule_review",
       "mcp_client_handoff",
       "red_team_capsule_boundary",
       "design_proof_capsule_workflow",
       "operate_capsule_transition",
-      "compare_capsule_versions"
+      "compare_capsule_versions",
+      "publish_proof_capsule_verifier_page"
     ],
     supported_capsule_types: CAPSULE_TYPES,
     supported_scenarios: SCENARIOS,
@@ -2146,14 +2371,15 @@ export function scorecard() {
   return {
     ok: true,
     score_target: 9.8,
-    score_claim: "v0.4_draft_until_revalidated",
-    scoring_note: "The v0.4 functionality layer may only claim 9.8 after local/prod proof scripts pass and Claude Cowork independently agrees.",
+    score_claim: "v0.5_draft_until_revalidated",
+    scoring_note: "The v0.5 public proof-run layer may only claim 9.8 after local/prod proof scripts pass and Claude Cowork independently agrees.",
     criteria: [
       { area: "MCP ergonomics", required: "Manifest, schema, resources, templates, prompts, read-only annotations, structured outputs." },
       { area: "Proof semantics", required: "Stable content hashes split from fresh envelope hashes; per-hash re-derivation." },
       { area: "Safety", required: "Public writes disabled; live DUAL writes only through operator-gated paths; no wallet actions or raw evidence storage." },
       { area: "Demo clarity", required: "Human UI shows capsule data, hashes, anchors, policy result, and verifier output." },
       { area: "Operator workflow", required: "Workflow builder, evidence intake, transition queue, recovery, timeline, verifier marketplace, compare, and agent handoff work without public writes." },
+      { area: "Public proof run", required: "One-click proof run produces a shareable verifier page with claims, evidence, source checks, policy, replay, DUAL anchors, hashes, and next safe action." },
       { area: "Red team", required: "Missing evidence, unsupported source, stale ownership, hash tamper, and live-write escalation are blocked." }
     ]
   };
@@ -2173,6 +2399,8 @@ export function handoff(endpoint = "http://127.0.0.1:4184/mcp") {
       "resources/read capsule://manifest",
       "tools/call get_capsule_status",
       "tools/call compose_proof_capsule",
+      "tools/call run_proof_capsule",
+      "tools/call get_public_verifier_page",
       "tools/call verify_proof_capsule",
       "tools/call replay_workflow_capsule",
       "tools/call get_proof_timeline",
@@ -2226,6 +2454,93 @@ function check(name, pass) {
 
 function step(name, pass, detail) {
   return { name, pass: Boolean(pass), detail };
+}
+
+function proofStep(name, pass, detail) {
+  return {
+    step: name,
+    pass: Boolean(pass),
+    detail: detail || ""
+  };
+}
+
+function scoreProofReadiness({ verification, policy, evidence, replay, transition_plan, diagnosis, capsule }) {
+  const components = [
+    {
+      area: "hashes",
+      label: "Hash re-derivation",
+      points: verification.ok ? 25 : 0,
+      max: 25,
+      status: verification.ok ? "passed" : "failed",
+      detail: verification.verification_level
+    },
+    {
+      area: "policy",
+      label: "Policy decision",
+      points: policy.result === "Blocked" ? 0 : policy.result === "Approved with review" ? 18 : 20,
+      max: 20,
+      status: policy.result,
+      detail: policy.code
+    },
+    {
+      area: "evidence",
+      label: "Evidence refs",
+      points: evidence.ok ? 20 : Math.max(0, 20 - ((evidence.summary?.missing || 0) * 5) - ((evidence.summary?.not_sufficient || 0) * 5)),
+      max: 20,
+      status: evidence.ok ? "verified" : "needs_work",
+      detail: `${evidence.summary?.verified || 0} verified`
+    },
+    {
+      area: "workflow",
+      label: "Workflow replay",
+      points: replay.ok ? 15 : 0,
+      max: 15,
+      status: replay.ok ? "replay_verified" : "replay_blocked",
+      detail: replay.hash_replay?.workflow_replay_hash || ""
+    },
+    {
+      area: "transition",
+      label: "Next transition",
+      points: transition_plan.status === "ready_for_operator_sync" ? 10 : transition_plan.status === "needs_recovery" ? 5 : 0,
+      max: 10,
+      status: transition_plan.status,
+      detail: transition_plan.queue_id || ""
+    },
+    {
+      area: "write_boundary",
+      label: "DUAL write boundary",
+      points: capsule.write_boundary?.public_writes === false ? 10 : 0,
+      max: 10,
+      status: capsule.write_boundary?.public_writes === false ? "public_writes_disabled" : "public_writes_exposed",
+      detail: capsule.write_boundary?.write_execution || "read-only"
+    }
+  ];
+  const score = Math.round(components.reduce((sum, item) => sum + item.points, 0));
+  const status = !verification.ok || policy.result === "Blocked"
+    ? "blocked"
+    : !diagnosis.healthy
+      ? "needs_recovery"
+      : transition_plan.status === "ready_for_operator_sync"
+        ? "ready_for_operator_sync"
+        : "verified";
+  return {
+    ok: score >= 90 && verification.ok && policy.result !== "Blocked",
+    score,
+    max_score: 100,
+    status,
+    grade: score >= 98 ? "operator_grade" : score >= 90 ? "verifier_ready" : score >= 75 ? "needs_recovery" : "blocked",
+    components
+  };
+}
+
+function publicProofUrl(baseUrl, capsule, scenario) {
+  const origin = String(baseUrl || "https://proof-capsule-mcp-demo.vercel.app").replace(/\/+$/, "");
+  const capsuleId = encodeURIComponent(capsule.capsule_id || "proof-capsule");
+  const params = new URLSearchParams();
+  if (scenario && scenario !== "custom_workflow") params.set("scenario", scenario);
+  params.set("content_hash", shortHash(capsule.hashes?.capsule_content_hash));
+  const query = params.toString();
+  return `${origin}/proof/${capsuleId}${query ? `?${query}` : ""}`;
 }
 
 function normalizeScenario(scenario) {

@@ -4,6 +4,10 @@
     {
       "source": "/mcp",
       "destination": "/api/mcp.mjs"
+    },
+    {
+      "source": "/proof/:path*",
+      "destination": "/index.html"
     }
   ]
 }
