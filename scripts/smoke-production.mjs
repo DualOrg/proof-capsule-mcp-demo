@@ -31,6 +31,7 @@ const marketplace = await get("/api/source/marketplace");
 const scenarioMarketplace = await get("/api/scenarios/marketplace");
 const saasReadiness = await get("/api/saas/readiness");
 const saasPlans = await get("/api/saas/plans");
+const extensibilityKit = await get("/api/extensions/kit");
 const tenantOnboarding = await post("/api/saas/onboarding", {
   tenant_name: "Acme Proof Operations",
   use_case: "multi-source proof rooms for regulated workflow decisions",
@@ -41,6 +42,29 @@ const adminPlane = await post("/api/saas/admin", {
   tenant_name: "Acme Proof Operations",
   plan_id: "growth_control_plane",
   sources: "dual, enterprise_vault, solana, ipfs, payment_preview"
+});
+const extensionPack = await post("/api/extensions/build", {
+  tenant_name: "Acme Proof Operations",
+  extension_name: "Supplier compliance proof room",
+  use_case: "supplier onboarding approval with tokenised attestations and DUAL state",
+  subject_type: "supplier_record",
+  states: "Requested, Evidence ready, Approved, Archived",
+  evidence_types: "identity, compliance, mandate, settlement",
+  sources: "enterprise_vault, counterparty_registry, dual, payment_preview",
+  endpoint: `${baseUrl}/mcp`
+});
+const adapterCertification = await post("/api/extensions/certify", {
+  source: "enterprise_vault",
+  proof_types: "identity, compliance",
+  auth_model: "tenant_api_gateway",
+  raw_evidence_stored: false,
+  signed_attestation_mode: true,
+  recheck_before_action: true
+});
+const migrationPlan = await post("/api/extensions/migration", {
+  from_version: "proof-capsule-workflow-draft.v0.2",
+  to_version: "proof-capsule-extension.v0.1",
+  extension_manifest: extensionPack.extension_manifest
 });
 const verification = await post("/api/capsule/verify", { capsule: demo.capsule });
 const replay = await post("/api/workflow/replay", { scenario: "universal_proof_capsule", capsule: demo.capsule });
@@ -99,6 +123,16 @@ const ok = Boolean(
   && saasReadiness.package_readiness_score >= 98
   && saasReadiness.package_readiness_basis?.score_type === "computed_weighted_package_controls"
   && saasReadiness.package_readiness_basis?.checks?.some((check) => check.key === "connector_disclosure" && check.ready)
+  && saasReadiness.extensibility?.score >= 98
+  && extensibilityKit.extensibility_score >= 98
+  && extensibilityKit.score_basis?.score_type === "computed_weighted_extensibility_controls"
+  && extensionPack.extension_pack_id
+  && extensionPack.requires_code_change === false
+  && extensionPack.marketplace_listing?.acceptance_gates?.length > 0
+  && adapterCertification.certification_score >= 98
+  && adapterCertification.adapter_contract?.raw_evidence_stored === false
+  && migrationPlan.ok
+  && migrationPlan.migration_steps?.some((step) => step.action === "readback")
   && saasPlans.plan_count >= 3
   && tenantOnboarding.workspace_id
   && tenantOnboarding.launch_steps?.length >= 5
@@ -125,6 +159,10 @@ const ok = Boolean(
   && mcp.tools?.includes("list_saas_plans")
   && mcp.tools?.includes("create_tenant_onboarding_plan")
   && mcp.tools?.includes("get_admin_control_plane")
+  && mcp.tools?.includes("get_extensibility_kit")
+  && mcp.tools?.includes("build_extension_pack")
+  && mcp.tools?.includes("certify_source_adapter")
+  && mcp.tools?.includes("plan_schema_migration")
 );
 
 console.log(JSON.stringify({
@@ -153,6 +191,11 @@ console.log(JSON.stringify({
   saasPackageScore: saasReadiness.package_readiness_score,
   saasPackageScoreType: saasReadiness.package_readiness_basis.score_type,
   saasActivationScore: saasReadiness.tenant_activation_score,
+  extensibilityScore: extensibilityKit.extensibility_score,
+  extensibilityScoreType: extensibilityKit.score_basis.score_type,
+  extensionPackId: extensionPack.extension_pack_id,
+  adapterCertificationScore: adapterCertification.certification_score,
+  migrationId: migrationPlan.migration_id,
   saasPlanCount: saasPlans.plan_count,
   tenantWorkspaceId: tenantOnboarding.workspace_id,
   adminPlaneId: adminPlane.admin_plane_id,

@@ -228,7 +228,8 @@ body {
   margin: 0;
 }
 
-.saas-desk {
+.saas-desk,
+.extension-studio {
   margin-bottom: 16px;
 }
 
@@ -1077,6 +1078,7 @@ body.public-mode .intro,
 body.public-mode .walkthrough-band,
 body.public-mode .supercharge-grid,
 body.public-mode .saas-desk,
+body.public-mode .extension-studio,
 body.public-mode .controls,
 body.public-mode .operations-grid,
 body.public-mode .proof .button-row,

@@ -3,7 +3,9 @@ import {
   buildProofTimeline,
   buildProofRoom,
   buildPublicVerifierPage,
+  buildExtensionPack,
   buildWorkflowDraft,
+  certifySourceAdapter,
   compareCapsules,
   composeProofCapsule,
   createTenantOnboardingPlan,
@@ -11,12 +13,14 @@ import {
   evaluateCapsulePolicy,
   generateAgentHandoffPack,
   getAdminControlPlane,
+  getExtensibilityKit,
   getSaasReadiness,
   getWorkflowDefinition,
   listScenarioMarketplace,
   listSaasPlans,
   listVerifierMarketplace,
   listSourceVerifiers,
+  planSchemaMigration,
   planTransitionQueue,
   replayWorkflowCapsule,
   runProofCapsule,
@@ -191,6 +195,29 @@ const adminPlane = getAdminControlPlane({
   live_dual_readback: true,
   operator_gate_configured: true
 });
+const extensibilityKit = getExtensibilityKit();
+const extensionPack = buildExtensionPack({
+  tenant_name: "Acme Proof Operations",
+  extension_name: "Supplier compliance proof room",
+  use_case: "supplier onboarding approval with tokenised attestations and DUAL state",
+  subject_type: "supplier_record",
+  states: "Requested, Evidence ready, Approved, Archived",
+  evidence_types: "identity, compliance, mandate, settlement",
+  sources: "enterprise_vault, counterparty_registry, dual, payment_preview"
+});
+const adapterCertification = certifySourceAdapter({
+  source: "enterprise_vault",
+  proof_types: "identity, compliance",
+  auth_model: "tenant_api_gateway",
+  raw_evidence_stored: false,
+  recheck_before_action: true,
+  signed_attestation_mode: true
+});
+const migrationPlan = planSchemaMigration({
+  from_version: "proof-capsule-workflow-draft.v0.2",
+  to_version: "proof-capsule-extension.v0.1",
+  extension_manifest: extensionPack.extension_manifest
+});
 const draft = buildWorkflowDraft({
   title: "Supplier onboarding approval",
   subject_type: "supplier_record",
@@ -249,6 +276,32 @@ if (!adminPlane.admin_plane_id || !adminPlane.ops_views?.length || !adminPlane.a
   throw new Error("Admin control plane is incomplete.");
 }
 
+if (
+  extensibilityKit.extensibility_score < 98
+  || extensibilityKit.score_basis?.score_type !== "computed_weighted_extensibility_controls"
+  || !extensibilityKit.extension_surfaces?.some((surface) => surface.surface === "MCP")
+  || !extensibilityKit.adapter_plugin_contract?.certification_requirements?.length
+) {
+  throw new Error("Extensibility kit is incomplete.");
+}
+
+if (
+  !extensionPack.extension_pack_id
+  || extensionPack.requires_code_change !== false
+  || !extensionPack.marketplace_listing?.acceptance_gates?.length
+  || !extensionPack.mcp_handoff?.first_calls?.includes("build_extension_pack")
+) {
+  throw new Error("Extension pack builder is incomplete.");
+}
+
+if (adapterCertification.certification_score < 98 || adapterCertification.adapter_contract?.raw_evidence_stored !== false) {
+  throw new Error("Adapter certification harness is incomplete.");
+}
+
+if (!migrationPlan.ok || !migrationPlan.migration_steps?.some((step) => step.action === "readback") || !migrationPlan.rollback_plan?.length) {
+  throw new Error("Schema migration planner is incomplete.");
+}
+
 if (!draft.ok || !draftEvidence.ok || !draft.workflow_definition.transitions.length) {
   throw new Error("Workflow builder draft failed.");
 }
@@ -276,6 +329,11 @@ console.log(JSON.stringify({
   saasPackageScore: saasReadiness.package_readiness_score,
   saasPackageScoreType: saasReadiness.package_readiness_basis.score_type,
   saasActivationScore: saasReadiness.tenant_activation_score,
+  extensibilityScore: extensibilityKit.extensibility_score,
+  extensibilityScoreType: extensibilityKit.score_basis.score_type,
+  extensionPackId: extensionPack.extension_pack_id,
+  adapterCertificationScore: adapterCertification.certification_score,
+  migrationId: migrationPlan.migration_id,
   tenantWorkspaceId: tenantOnboarding.workspace_id,
   adminPlaneId: adminPlane.admin_plane_id,
   workflowDraftHash: draft.draft_hash,

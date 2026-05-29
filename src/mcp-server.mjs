@@ -11,8 +11,10 @@ import {
   buildProofTimeline,
   buildProofRoom,
   buildPublicVerifierPage,
+  buildExtensionPack,
   buildWorkflowDraft,
   capsuleToMarkdown,
+  certifySourceAdapter,
   compareCapsules,
   composeProofCapsule,
   createTenantOnboardingPlan,
@@ -23,6 +25,7 @@ import {
   evaluateCapsulePolicy,
   generateAgentHandoffPack,
   getAdminControlPlane,
+  getExtensibilityKit,
   getSaasReadiness,
   getWorkflowDefinition,
   handoff,
@@ -31,6 +34,7 @@ import {
   listVerifierMarketplace,
   listSourceVerifiers,
   listWorkflowTemplates,
+  planSchemaMigration,
   planTransitionQueue,
   publishPublicProof,
   redTeamCapsule,
@@ -444,6 +448,56 @@ export function createMcpServer() {
       mimeType: "application/json"
     },
     async (uri) => ({ contents: [{ uri: uri.href, text: JSON.stringify(getAdminControlPlane({ dual_status: await getDualStatusLive() }), null, 2) }] })
+  );
+
+  server.registerResource(
+    "extensions-kit",
+    "capsule://extensions/kit",
+    {
+      title: "Proof Capsule Extensibility Kit",
+      description: "Declarative extension schema, no-code builder, adapter certification, migration, and marketplace contract.",
+      mimeType: "application/json"
+    },
+    async (uri) => ({ contents: [{ uri: uri.href, text: JSON.stringify(getExtensibilityKit(), null, 2) }] })
+  );
+
+  server.registerResource(
+    "extensions-scorecard",
+    "capsule://extensions/scorecard",
+    {
+      title: "Proof Capsule Extensibility Scorecard",
+      description: "Weighted controls behind the product extensibility score.",
+      mimeType: "application/json"
+    },
+    async (uri) => {
+      const kit = getExtensibilityKit();
+      return { contents: [{ uri: uri.href, text: JSON.stringify({ ok: true, score: kit.extensibility_score, basis: kit.score_basis, caveats: kit.caveats }, null, 2) }] };
+    }
+  );
+
+  server.registerResource(
+    "extensions-adapter-contract",
+    "capsule://extensions/adapter-contract",
+    {
+      title: "Source Adapter Plugin Contract",
+      description: "Required fields and certification requirements for tenant source adapters.",
+      mimeType: "application/json"
+    },
+    async (uri) => {
+      const kit = getExtensibilityKit();
+      return { contents: [{ uri: uri.href, text: JSON.stringify({ ok: true, adapter_plugin_contract: kit.adapter_plugin_contract }, null, 2) }] };
+    }
+  );
+
+  server.registerResource(
+    "extensions-migration",
+    "capsule://extensions/migration",
+    {
+      title: "Extension Schema Migration Contract",
+      description: "Version-pin, migration, replay, readback, and rollback contract for extension packs.",
+      mimeType: "application/json"
+    },
+    async (uri) => ({ contents: [{ uri: uri.href, text: JSON.stringify(planSchemaMigration(), null, 2) }] })
   );
 
   server.registerResource(
@@ -1231,6 +1285,99 @@ export function createMcpServer() {
   );
 
   server.registerTool(
+    "get_extensibility_kit",
+    {
+      title: "Get Extensibility Kit",
+      description: "Return the no-code extension schema, weighted extensibility score, adapter contract, migration contract, and marketplace gates.",
+      inputSchema: {
+        customer_gateway_configured: z.boolean().optional(),
+        mcp_tool_count: z.number().optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(getExtensibilityKit(input))
+  );
+
+  server.registerTool(
+    "build_extension_pack",
+    {
+      title: "Build Extension Pack",
+      description: "Build a tenant-configurable Proof Capsule extension pack with workflow, capsule preview, certified adapters, migration plan, and marketplace listing.",
+      inputSchema: {
+        tenant_name: z.string().optional(),
+        tenant: z.string().optional(),
+        extension_name: z.string().optional(),
+        title: z.string().optional(),
+        use_case: z.string().optional(),
+        subject_type: z.string().optional(),
+        capsule_type: capsuleTypeSchema.optional(),
+        states: z.union([z.array(z.string()), z.string()]).optional(),
+        evidence_types: z.union([z.array(z.string()), z.string()]).optional(),
+        required_evidence: z.union([z.array(z.string()), z.string()]).optional(),
+        sources: z.union([z.array(z.string()), z.string()]).optional(),
+        selected_sources: z.union([z.array(z.string()), z.string()]).optional(),
+        adapter_definitions: z.array(z.record(z.string(), z.unknown())).optional(),
+        adapters: z.array(z.record(z.string(), z.unknown())).optional(),
+        marketplace_visibility: z.string().optional(),
+        value_usd: z.number().optional(),
+        max_value_usd: z.number().optional(),
+        human_review_threshold_usd: z.number().optional(),
+        endpoint: z.string().optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(buildExtensionPack(input))
+  );
+
+  server.registerTool(
+    "certify_source_adapter",
+    {
+      title: "Certify Source Adapter",
+      description: "Run deterministic certification checks for a tenant source adapter contract without storing raw evidence or executing writes.",
+      inputSchema: {
+        source: z.string().optional(),
+        adapter: z.record(z.string(), z.unknown()).optional(),
+        adapter_name: z.string().optional(),
+        proof_types: z.union([z.array(z.string()), z.string()]).optional(),
+        endpoint: z.string().optional(),
+        signed_attestation_mode: z.boolean().optional(),
+        canonicalization: z.string().optional(),
+        hash_algorithm: z.string().optional(),
+        freshness_rule: z.string().optional(),
+        auth_model: z.string().optional(),
+        raw_evidence_stored: z.boolean().optional(),
+        recheck_before_action: z.boolean().optional(),
+        sample_ref: z.record(z.string(), z.unknown()).optional(),
+        tenant_activation_approved: z.boolean().optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(certifySourceAdapter(input))
+  );
+
+  server.registerTool(
+    "plan_schema_migration",
+    {
+      title: "Plan Schema Migration",
+      description: "Plan a version-pinned extension migration with transform, replay, public verifier, operator approval, readback, and rollback steps.",
+      inputSchema: {
+        from_version: z.string().optional(),
+        from: z.string().optional(),
+        to_version: z.string().optional(),
+        to: z.string().optional(),
+        extension_manifest: z.record(z.string(), z.unknown()).optional(),
+        manifest: z.record(z.string(), z.unknown()).optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(planSchemaMigration(input))
+  );
+
+  server.registerTool(
     "sync_proof_capsule_live",
     {
       title: "Sync Proof Capsule Live",
@@ -1415,6 +1562,27 @@ export function createMcpServer() {
       "Call get_saas_readiness, list_saas_plans, create_tenant_onboarding_plan, and get_admin_control_plane.",
       "Return the sellable package, launch checklist, source adapter gaps, proof acceptance path, public verifier story, and the operator-gated DUAL write boundary.",
       "Do not claim self-serve auth, billing, settlement execution, or live external-source truth unless those customer systems are configured."
+    ].join("\n"))
+  );
+
+  server.registerPrompt(
+    "extend_proof_capsule_product",
+    {
+      title: "Extend Proof Capsule Product",
+      description: "Guide an agent through creating a tenant extension pack, certifying adapters, planning migration, and publishing a marketplace listing.",
+      argsSchema: {
+        tenant: z.string().optional(),
+        workflow: z.string().optional(),
+        sources: z.string().optional()
+      }
+    },
+    ({ tenant, workflow, sources }) => textPrompt([
+      `Create a Proof Capsule extension for ${tenant || "the customer"}.`,
+      `Workflow: ${workflow || "the supplied workflow"}.`,
+      `Sources: ${sources || "the supplied source systems"}.`,
+      "Call get_extensibility_kit first, then build_extension_pack, certify_source_adapter for each custom source, and plan_schema_migration before publishing.",
+      "Return the extension manifest, workflow definition, adapter certification scores, migration plan, marketplace visibility, acceptance gates, and write boundary.",
+      "Do not claim live source truth, production install, or DUAL state mutation until tenant adapters and operator-gated write approval are configured."
     ].join("\n"))
   );
 

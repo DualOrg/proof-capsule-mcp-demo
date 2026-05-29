@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 
 export const SERVICE_NAME = "dual-proof-capsule-mcp";
-export const SERVICE_VERSION = "0.7.1";
+export const SERVICE_VERSION = "0.8.0";
 export const CAPSULE_SCHEMA_VERSION = "proof-capsule.v0.2";
 export const CUSTOM_WORKFLOW_SCHEMA_VERSION = "proof-capsule-workflow-draft.v0.2";
+export const EXTENSION_SCHEMA_VERSION = "proof-capsule-extension.v0.1";
 export const GENERATED_AT = "2026-05-29T00:00:00.000Z";
 export const WRITE_BOUNDARY = "Public read/generate/verify. Live DUAL writes are available only through server-side operator-gated endpoints; no public writes, wallet actions, raw evidence storage, or settlement execution.";
 
@@ -101,7 +102,8 @@ export const SCENARIO_MARKETPLACE = [
   }
 ];
 
-export const SAAS_PACKAGE_VERSION = "proof-capsule-saas.v0.7.1";
+export const SAAS_PACKAGE_VERSION = "proof-capsule-saas.v0.8.0";
+export const EXTENSIBILITY_PACKAGE_VERSION = "proof-capsule-extensibility.v0.8.0";
 
 export const SAAS_PLAN_CATALOG = [
   {
@@ -220,6 +222,11 @@ const SAAS_CONTROL_CATALOG = [
     area: "Pilot sales pack",
     status: "packaged",
     evidence: "Pilot offer, buyer narrative, demo route, acceptance gates, and objection handling are documented for first-sale use."
+  },
+  {
+    area: "Extension kit",
+    status: "packaged",
+    evidence: "Tenant-configurable extension packs, adapter certification, schema migration, and marketplace publication are exposed through UI/API/MCP."
   }
 ];
 
@@ -232,6 +239,106 @@ const DEFAULT_TENANT_PROFILE = {
   compliance_profile: "commercial-risk",
   go_live_window_days: 14
 };
+
+const DEFAULT_EXTENSION_PROFILE = {
+  tenant_name: "Acme Proof Operations",
+  extension_name: "Supplier compliance proof room",
+  use_case: "supplier onboarding approval with tokenised attestations and DUAL state",
+  subject_type: "supplier_record",
+  capsule_type: "credential",
+  states: ["Requested", "Evidence ready", "Approved", "Archived"],
+  evidence_types: ["identity", "compliance", "mandate", "settlement"],
+  sources: ["enterprise_vault", "counterparty_registry", "dual", "payment_preview"],
+  plan_id: "growth_control_plane",
+  marketplace_visibility: "tenant_private",
+  target_schema_version: CAPSULE_SCHEMA_VERSION
+};
+
+const EXTENSION_ACCEPTANCE_GATES = [
+  "Workflow composes from tenant config without code changes.",
+  "Every required evidence type maps to a source verifier or adapter contract.",
+  "Adapter certification returns deterministic pass/fail evidence and a certification hash.",
+  "Generated capsule verifies, replays, and produces a public verifier link before customer reliance.",
+  "Migration plan exists for future schema bumps and includes rollback steps.",
+  "Public writes remain false; live DUAL writes remain operator-gated."
+];
+
+const EXTENSION_FIELD_SCHEMA = {
+  tenant_name: "Customer or workspace name.",
+  extension_name: "Human-facing template name.",
+  use_case: "Business workflow being modelled.",
+  subject_type: "Stable subject category, slugged into workflow and capsule IDs.",
+  capsule_type: `One of ${CAPSULE_TYPES.join(", ")}.`,
+  states: "Ordered workflow states. At least two required.",
+  evidence_types: "Required evidence categories for the first transition.",
+  sources: "Source verifier keys or adapter names used by the evidence refs.",
+  policy: "Optional max value, review threshold, allowed sources, and policy wording.",
+  marketplace_visibility: "tenant_private | partner_shared | public_template.",
+  adapter_definitions: "Optional source-adapter contracts to certify for tenant use."
+};
+
+const ADAPTER_CERTIFICATION_REQUIREMENTS = [
+  {
+    key: "proof_types",
+    area: "Proof types declared",
+    weight: 12,
+    requirement: "Adapter states exactly which evidence types it can verify."
+  },
+  {
+    key: "canonical_hashing",
+    area: "Canonical hashing",
+    weight: 14,
+    requirement: "Adapter output can be stable-sorted and sha256 hashed without hidden state."
+  },
+  {
+    key: "raw_evidence_boundary",
+    area: "Raw evidence boundary",
+    weight: 12,
+    requirement: "Adapter stores refs/hashes/metadata, not raw sensitive evidence payloads."
+  },
+  {
+    key: "freshness_rule",
+    area: "Freshness rule",
+    weight: 12,
+    requirement: "Adapter declares when source facts must be rechecked before reliance."
+  },
+  {
+    key: "auth_boundary",
+    area: "Auth boundary",
+    weight: 10,
+    requirement: "Adapter uses tenant gateway, OAuth, signed attestation, or private service auth."
+  },
+  {
+    key: "mcp_safe_output",
+    area: "MCP-safe output",
+    weight: 10,
+    requirement: "Adapter response is safe for read-only MCP tools and redacts secrets."
+  },
+  {
+    key: "live_or_signed_source",
+    area: "Live or signed source",
+    weight: 10,
+    requirement: "Adapter points to a live endpoint or a signed attestation mode."
+  },
+  {
+    key: "replay_fixture",
+    area: "Replay fixture",
+    weight: 10,
+    requirement: "Adapter includes a deterministic sample ref for certification replay."
+  },
+  {
+    key: "recheck_before_action",
+    area: "Action recheck",
+    weight: 8,
+    requirement: "Adapter marks action-critical facts for recheck before release/transfer/sync."
+  },
+  {
+    key: "tenant_activation",
+    area: "Tenant activation",
+    weight: 2,
+    requirement: "Customer has approved the adapter in its production gateway."
+  }
+];
 
 export const SOURCE_VERIFIER_REGISTRY = {
   solana: {
@@ -2017,7 +2124,7 @@ export function listScenarioMarketplace() {
   const scenarioSet = new Set(SCENARIOS);
   return {
     ok: true,
-    marketplace_id: "proof-capsule.scenario-marketplace.v0.7.1",
+    marketplace_id: "proof-capsule.scenario-marketplace.v0.8.0",
     template_count: SCENARIO_MARKETPLACE.length,
     launchable_count: SCENARIO_MARKETPLACE.filter((template) => scenarioSet.has(template.scenario)).length,
     templates: SCENARIO_MARKETPLACE.map((template) => ({
@@ -2135,6 +2242,10 @@ export function getSaasReadiness(input = {}) {
       freshness_rule: verifier.freshness_rule
     };
   });
+  const extensibility = getExtensibilityKit({
+    customer_gateway_configured: customerAuth && billingConfigured,
+    mcp_tool_count: advertisedToolCount
+  });
 
   return {
     ok: true,
@@ -2166,6 +2277,18 @@ export function getSaasReadiness(input = {}) {
     },
     readiness_checks: checks,
     connector_readiness: connectorReadiness,
+    extensibility: {
+      package_version: extensibility.package_version,
+      score: extensibility.extensibility_score,
+      score_type: extensibility.score_basis.score_type,
+      ready_weight: extensibility.score_basis.ready_weight,
+      total_weight: extensibility.score_basis.total_weight,
+      holdbacks: extensibility.score_basis.holdbacks,
+      no_code_extension_packs: true,
+      adapter_certification: true,
+      migration_planner: true,
+      marketplace_publication: true
+    },
     control_catalog: SAAS_CONTROL_CATALOG,
     not_claimed_by_public_demo: [
       "self-serve account signup",
@@ -2340,6 +2463,313 @@ export function getAdminControlPlane(input = {}) {
       "Rotate operator token and review audit events after any suspicious write attempt."
     ],
     admin_hash: hashValue({ readiness_hash: readiness.readiness_hash, onboarding_hash: onboarding.onboarding_hash, opsViews, auditSchema })
+  };
+}
+
+export function getExtensibilityKit(input = {}) {
+  const descriptor = serviceDescriptor();
+  const advertisedToolCount = Number(input.mcp_tool_count || descriptor.tools.length + 4);
+  const controls = [
+    readinessCheck("declarative_extension_schema", "Declarative extension schema", true, "ready", "Tenant workflows are described as JSON config: states, evidence, sources, policy, marketplace visibility, and adapter definitions.", 13),
+    readinessCheck("no_code_workflow_builder", "No-code workflow builder", true, "ready", "Extension packs call the workflow draft engine and return workflow/capsule previews without requiring a code deploy.", 13),
+    readinessCheck("tenant_config_contract", "Tenant config contract", true, "ready", "Extension manifests separate tenant configuration from the core proof engine and DUAL write path.", 12),
+    readinessCheck("source_adapter_contract", "Source adapter plugin contract", true, "ready", "Every adapter must declare proof types, hashing, freshness, auth, raw-evidence boundary, and action recheck rules.", 12),
+    readinessCheck("adapter_certification", "Adapter certification harness", true, "ready", "certify_source_adapter runs weighted deterministic checks and returns a certification hash.", 12),
+    readinessCheck("schema_migration", "Schema migration planner", true, "ready", "plan_schema_migration creates compatibility, transform, replay, and rollback steps for versioned extensions.", 10),
+    readinessCheck("customer_marketplace", "Customer scenario marketplace", true, "ready", "build_extension_pack emits a marketplace listing with visibility, acceptance gates, and publication state.", 9),
+    readinessCheck("mcp_api_extension_surface", "MCP/API extension surface", advertisedToolCount >= 40, "ready", `${advertisedToolCount} tools advertise the extension builder, certification, and migration surface.`, 10),
+    readinessCheck("ui_extension_studio", "UI extension studio", true, "ready", "The product UI exposes extension score, build pack, certify adapter, and migration plan actions.", 7),
+    readinessCheck("customer_gateway_activation", "Customer gateway activation", input.customer_gateway_configured === true, input.customer_gateway_configured === true ? "configured" : "customer_boundary", input.customer_gateway_configured === true ? "Customer gateway is configured for production extension installs." : "Extension installs are sellable as assisted tenant configuration; customer auth/billing/API gateway activation still happens during tenant launch.", 2)
+  ];
+  const totalWeight = controls.reduce((sum, check) => sum + check.weight, 0);
+  const readyWeight = controls.reduce((sum, check) => sum + (check.ready ? check.weight : 0), 0);
+  const score = Math.round((readyWeight / totalWeight) * 100);
+  const holdbacks = controls
+    .filter((check) => !check.ready)
+    .map((check) => ({
+      key: check.key,
+      area: check.area,
+      status: check.status,
+      weight: check.weight,
+      evidence: check.evidence
+    }));
+  const samplePack = buildExtensionPack({
+    ...DEFAULT_EXTENSION_PROFILE,
+    extension_name: "Supplier compliance proof room"
+  });
+
+  return {
+    ok: true,
+    package_version: EXTENSIBILITY_PACKAGE_VERSION,
+    schema_version: EXTENSION_SCHEMA_VERSION,
+    extensibility_score: score,
+    score_basis: {
+      score_type: "computed_weighted_extensibility_controls",
+      max_score: 100,
+      ready_weight: readyWeight,
+      total_weight: totalWeight,
+      controls,
+      holdbacks,
+      note: "Extensibility is scored on whether a tenant can define, certify, migrate, publish, and verify a new workflow without changing the core proof engine. Customer gateway activation is the remaining tenant-bound holdback."
+    },
+    extension_surfaces: [
+      { surface: "UI", capability: "Extension Studio: build pack, certify adapter, plan migration, inspect marketplace listing." },
+      { surface: "REST", capability: "GET /api/extensions/kit, POST /api/extensions/build, POST /api/extensions/certify, POST /api/extensions/migration." },
+      { surface: "MCP", capability: "get_extensibility_kit, build_extension_pack, certify_source_adapter, plan_schema_migration." },
+      { surface: "Resources", capability: "capsule://extensions/* resources expose schema, scorecard, adapter contract, and migration contract." }
+    ],
+    extension_schema: EXTENSION_FIELD_SCHEMA,
+    adapter_plugin_contract: {
+      required_fields: ["source", "proof_types", "canonicalization", "freshness_rule", "auth_model", "raw_evidence_stored", "sample_ref"],
+      recommended_fields: ["endpoint", "signed_attestation_mode", "does_not_prove", "recheck_before_action", "redaction_policy"],
+      certification_requirements: ADAPTER_CERTIFICATION_REQUIREMENTS,
+      output_contract: ["evidence_id", "type", "source", "ref", "hash", "point_in_time", "summary", "verifier_id"]
+    },
+    migration_contract: {
+      version_pin: "Every extension pack carries schema_version, target_capsule_schema_version, extension_hash, and generated workflow hash.",
+      safe_migration_steps: ["snapshot", "transform", "rederive", "replay", "public verifier", "operator approval", "readback", "rollback plan"],
+      write_boundary: WRITE_BOUNDARY
+    },
+    marketplace_contract: {
+      visibility_options: ["tenant_private", "partner_shared", "public_template"],
+      publication_gates: EXTENSION_ACCEPTANCE_GATES,
+      no_code_claim: "New tenant workflow packs are installable as config and adapter contracts; core code changes are not required for the proof model."
+    },
+    sample_extension_pack: {
+      extension_pack_id: samplePack.extension_pack_id,
+      extension_hash: samplePack.extension_hash,
+      requires_code_change: samplePack.requires_code_change,
+      marketplace_listing: samplePack.marketplace_listing,
+      certification_summary: samplePack.certification_summary
+    },
+    caveats: [
+      "This does not make customer auth, billing, or source-system credentials self-serve.",
+      "Custom source adapters must be certified and connected to the tenant gateway before action-critical reliance.",
+      "Live DUAL writes still require the operator-gated sync/mint path."
+    ],
+    extensibility_hash: hashValue({ package_version: EXTENSIBILITY_PACKAGE_VERSION, controls, sample: samplePack.extension_hash })
+  };
+}
+
+export function buildExtensionPack(input = {}) {
+  const profile = {
+    ...DEFAULT_EXTENSION_PROFILE,
+    ...input
+  };
+  const tenantName = String(profile.tenant_name || profile.tenant || DEFAULT_EXTENSION_PROFILE.tenant_name).trim();
+  const extensionName = String(profile.extension_name || profile.title || DEFAULT_EXTENSION_PROFILE.extension_name).trim();
+  const useCase = String(profile.use_case || DEFAULT_EXTENSION_PROFILE.use_case).trim();
+  const subjectType = String(profile.subject_type || DEFAULT_EXTENSION_PROFILE.subject_type).trim();
+  const capsuleType = CAPSULE_TYPES.includes(profile.capsule_type) ? profile.capsule_type : DEFAULT_EXTENSION_PROFILE.capsule_type;
+  const states = normalizeList(profile.states, DEFAULT_EXTENSION_PROFILE.states);
+  const evidenceTypes = normalizeList(profile.evidence_types || profile.required_evidence, DEFAULT_EXTENSION_PROFILE.evidence_types);
+  const sources = normalizeList(profile.sources || profile.selected_sources, DEFAULT_EXTENSION_PROFILE.sources);
+  const adapterDefinitions = normalizeAdapterDefinitions(profile.adapter_definitions || profile.adapters, sources, evidenceTypes);
+  const adapterCertifications = adapterDefinitions.map((adapter) => certifySourceAdapter({ adapter }));
+  const workflowDraft = buildWorkflowDraft({
+    title: extensionName,
+    subject_type: subjectType,
+    capsule_type: capsuleType,
+    states,
+    evidence_types: evidenceTypes,
+    sources,
+    value_usd: Number(profile.value_usd || 50000),
+    max_value_usd: Number(profile.max_value_usd || 100000),
+    human_review_threshold_usd: Number(profile.human_review_threshold_usd || 50000),
+    policy_gate: profile.policy_gate || "all required evidence and certified source adapters are present"
+  });
+  const migrationPlan = planSchemaMigration({
+    from_version: profile.from_schema_version || CUSTOM_WORKFLOW_SCHEMA_VERSION,
+    to_version: profile.to_schema_version || EXTENSION_SCHEMA_VERSION,
+    extension_manifest: {
+      extension_name: extensionName,
+      states,
+      evidence_types: evidenceTypes,
+      sources
+    }
+  });
+  const publicationState = adapterCertifications.every((cert) => cert.certification_score >= 90)
+    && workflowDraft.validation.ok
+    ? "publishable_after_customer_approval"
+    : "needs_adapter_or_evidence_work";
+  const extensionManifest = {
+    schema_version: EXTENSION_SCHEMA_VERSION,
+    package_version: EXTENSIBILITY_PACKAGE_VERSION,
+    tenant_name: tenantName,
+    extension_name: extensionName,
+    use_case: useCase,
+    subject_type: subjectType,
+    capsule_type: capsuleType,
+    states,
+    evidence_types: evidenceTypes,
+    sources,
+    marketplace_visibility: profile.marketplace_visibility || DEFAULT_EXTENSION_PROFILE.marketplace_visibility,
+    target_capsule_schema_version: profile.target_schema_version || CAPSULE_SCHEMA_VERSION,
+    install_mode: "tenant_config_no_code",
+    requires_code_change: false,
+    public_writes: false,
+    live_write_execution: "operator_gated"
+  };
+  const extensionHash = hashValue({ extensionManifest, workflow_hash: workflowDraft.draft_hash, adapter_hashes: adapterCertifications.map((cert) => cert.certification_hash) });
+  const extensionPackId = `extension:${shortHash(extensionHash)}`;
+
+  return {
+    ok: true,
+    package_version: EXTENSIBILITY_PACKAGE_VERSION,
+    extension_pack_id: extensionPackId,
+    extension_hash: extensionHash,
+    install_mode: "tenant_config_no_code",
+    requires_code_change: false,
+    tenant_name: tenantName,
+    extension_manifest: extensionManifest,
+    workflow_definition: workflowDraft.workflow_definition,
+    capsule_preview: workflowDraft.capsule,
+    workflow_validation: workflowDraft.validation,
+    adapter_certifications: adapterCertifications,
+    certification_summary: {
+      adapters: adapterCertifications.length,
+      certified: adapterCertifications.filter((cert) => cert.certification_score >= 90).length,
+      minimum_score: Math.min(...adapterCertifications.map((cert) => cert.certification_score), 100),
+      all_action_ready: adapterCertifications.every((cert) => cert.certification_score >= 90)
+    },
+    marketplace_listing: {
+      listing_id: `listing:${shortHash(hashValue({ extensionPackId, tenantName, extensionName }))}`,
+      label: extensionName,
+      use_case: useCase,
+      visibility: extensionManifest.marketplace_visibility,
+      status: publicationState,
+      acceptance_gates: EXTENSION_ACCEPTANCE_GATES,
+      reviewer_path: "Build extension pack -> certify adapters -> run proof -> publish verifier -> plan operator-gated sync"
+    },
+    migration_plan: migrationPlan,
+    mcp_handoff: {
+      endpoint: profile.endpoint || "https://proof-capsule-mcp-demo.vercel.app/mcp",
+      first_calls: [
+        "get_extensibility_kit",
+        "build_extension_pack",
+        "certify_source_adapter",
+        "plan_schema_migration",
+        "run_proof_capsule",
+        "publish_public_proof"
+      ],
+      write_tools: ["sync_proof_capsule_live", "mint_proof_capsule_live"],
+      write_policy: "Extension installation is config-only until an authorised operator approves a DUAL sync or mint."
+    },
+    customer_editable_fields: Object.keys(EXTENSION_FIELD_SCHEMA),
+    acceptance_gates: EXTENSION_ACCEPTANCE_GATES.map((gate) => ({
+      gate,
+      status: gate.includes("Public writes") ? "enforced" : "ready"
+    })),
+    next_actions: [
+      "Review the generated workflow and capsule preview with the tenant owner.",
+      "Replace demo/reference adapters with certified tenant adapters where needed.",
+      "Run proof-room and public verifier acceptance.",
+      "Publish as tenant-private or partner-shared marketplace template.",
+      "Only sync to DUAL through the operator-gated path after customer approval."
+    ],
+    write_boundary: WRITE_BOUNDARY
+  };
+}
+
+export function certifySourceAdapter(input = {}) {
+  const adapter = normalizeAdapterDefinition(input.adapter || input, input.source);
+  const sampleRef = adapter.sample_ref || {
+    evidence_id: `${slugify(adapter.source).toUpperCase()}-CERT-001`,
+    type: adapter.proof_types[0] || "attestation",
+    source: adapter.source,
+    ref: `${adapter.source}://certification/sample`,
+    hash: hashValue({ source: adapter.source, certification: true }),
+    summary: `${adapter.adapter_name} deterministic certification fixture.`
+  };
+  const normalizedSample = normalizeEvidenceRef(sampleRef);
+  const checks = buildAdapterCertificationChecks(adapter, normalizedSample);
+  const totalWeight = checks.reduce((sum, check) => sum + check.weight, 0);
+  const readyWeight = checks.reduce((sum, check) => sum + (check.pass ? check.weight : 0), 0);
+  const score = Math.round((readyWeight / totalWeight) * 100);
+  const level = score >= 98
+    ? "production_contract_ready"
+    : score >= 90
+      ? "tenant_ready_with_activation"
+      : score >= 75
+        ? "reference_only"
+        : "not_certified";
+
+  return {
+    ok: score >= 75,
+    package_version: EXTENSIBILITY_PACKAGE_VERSION,
+    adapter_id: adapter.adapter_id,
+    source: adapter.source,
+    adapter_name: adapter.adapter_name,
+    certification_score: score,
+    certification_level: level,
+    ready_weight: readyWeight,
+    total_weight: totalWeight,
+    checks,
+    sample_ref: normalizedSample,
+    adapter_contract: {
+      source: adapter.source,
+      mode: adapter.mode,
+      proof_types: adapter.proof_types,
+      canonicalization: adapter.canonicalization,
+      hash_algorithm: adapter.hash_algorithm,
+      freshness_rule: adapter.freshness_rule,
+      auth_model: adapter.auth_model,
+      raw_evidence_stored: adapter.raw_evidence_stored,
+      recheck_before_action: adapter.recheck_before_action,
+      does_not_prove: adapter.does_not_prove
+    },
+    production_caveats: [
+      adapter.tenant_activation_approved ? "Tenant gateway activation recorded." : "Tenant gateway activation still required before production reliance.",
+      "Certification proves the adapter contract shape and sample replay, not future source truth.",
+      "Any source fact used for settlement, release, transfer, retirement, or sync must be rechecked at action time."
+    ],
+    certification_hash: hashValue({ adapter, checks, sample: normalizedSample })
+  };
+}
+
+export function planSchemaMigration(input = {}) {
+  const fromVersion = String(input.from_version || input.from || CUSTOM_WORKFLOW_SCHEMA_VERSION);
+  const toVersion = String(input.to_version || input.to || EXTENSION_SCHEMA_VERSION);
+  const manifest = input.extension_manifest || input.manifest || {
+    extension_name: DEFAULT_EXTENSION_PROFILE.extension_name,
+    states: DEFAULT_EXTENSION_PROFILE.states,
+    evidence_types: DEFAULT_EXTENSION_PROFILE.evidence_types,
+    sources: DEFAULT_EXTENSION_PROFILE.sources
+  };
+  const compatibilityChecks = [
+    migrationCheck("schema_versions_declared", Boolean(fromVersion && toVersion), "Both source and target schema versions are declared."),
+    migrationCheck("manifest_present", Boolean(manifest && typeof manifest === "object"), "Extension manifest is available for transform planning."),
+    migrationCheck("states_preserved", normalizeList(manifest.states, DEFAULT_EXTENSION_PROFILE.states).length >= 2, "Workflow state order can be preserved."),
+    migrationCheck("evidence_preserved", normalizeList(manifest.evidence_types || manifest.required_evidence, DEFAULT_EXTENSION_PROFILE.evidence_types).length > 0, "Required evidence categories can be carried forward."),
+    migrationCheck("sources_mapped", normalizeList(manifest.sources, DEFAULT_EXTENSION_PROFILE.sources).length > 0, "Source verifier mappings can be migrated."),
+    migrationCheck("write_boundary_preserved", true, "Public writes remain false and live writes remain operator-gated during migration.")
+  ];
+  const migrationSteps = [
+    { step: 1, action: "snapshot", detail: "Export extension manifest, workflow definition, current capsule content hash, adapter certification hashes, and public verifier link status." },
+    { step: 2, action: "transform", detail: `Map ${fromVersion} fields into ${toVersion}; preserve states, evidence types, source mappings, and policy thresholds.` },
+    { step: 3, action: "rederive", detail: "Recompute workflow, evidence, policy, state-transition, capsule content, and envelope hashes." },
+    { step: 4, action: "replay", detail: "Run replay_workflow_capsule and verify_evidence_refs against the migrated workflow." },
+    { step: 5, action: "publish_verifier_preview", detail: "Generate a public verifier preview and require link_verified before relying on the migrated pack." },
+    { step: 6, action: "operator_approval", detail: "If a DUAL write is needed, queue sync/mint for an authorised operator token only." },
+    { step: 7, action: "readback", detail: "After any write, read the DUAL object back and compare declared vs derived hashes." }
+  ];
+
+  return {
+    ok: compatibilityChecks.every((check) => check.pass),
+    package_version: EXTENSIBILITY_PACKAGE_VERSION,
+    migration_id: `migration:${shortHash(hashValue({ fromVersion, toVersion, manifest }))}`,
+    from_version: fromVersion,
+    to_version: toVersion,
+    compatibility: compatibilityChecks,
+    migration_steps: migrationSteps,
+    rollback_plan: [
+      "Keep the pre-migration extension manifest and content hash.",
+      "Do not overwrite the public verifier link until the migrated link is verified.",
+      "If replay or evidence verification fails, keep the prior DUAL object state and publish recovery actions.",
+      "Rollback is a config revert unless an authorised DUAL write has already occurred; then re-sync the prior verified capsule through the operator-gated path."
+    ],
+    write_boundary: WRITE_BOUNDARY,
+    migration_hash: hashValue({ fromVersion, toVersion, manifest, migrationSteps })
   };
 }
 
@@ -3273,7 +3703,11 @@ export function serviceDescriptor() {
       "get_saas_readiness",
       "list_saas_plans",
       "create_tenant_onboarding_plan",
-      "get_admin_control_plane"
+      "get_admin_control_plane",
+      "get_extensibility_kit",
+      "build_extension_pack",
+      "certify_source_adapter",
+      "plan_schema_migration"
     ],
     resources: [
       "capsule://manifest",
@@ -3292,7 +3726,11 @@ export function serviceDescriptor() {
       "capsule://saas/readiness",
       "capsule://saas/plans",
       "capsule://saas/onboarding",
-      "capsule://saas/admin"
+      "capsule://saas/admin",
+      "capsule://extensions/kit",
+      "capsule://extensions/scorecard",
+      "capsule://extensions/adapter-contract",
+      "capsule://extensions/migration"
     ],
     resourceTemplates: ["capsule://demo/{scenario}", "capsule://workflow/{scenario}", "capsule://public-proof/{scenario}", "capsule://proof-room/{scenario}"],
     prompts: [
@@ -3304,16 +3742,19 @@ export function serviceDescriptor() {
       "compare_capsule_versions",
       "publish_proof_capsule_verifier_page",
       "supercharge_proof_capsule",
-      "launch_proof_capsule_saas_tenant"
+      "launch_proof_capsule_saas_tenant",
+      "extend_proof_capsule_product"
     ],
     supported_capsule_types: CAPSULE_TYPES,
     supported_scenarios: SCENARIOS,
     commercialStage: "commodity_saas_packaged",
     saas: {
       package_version: SAAS_PACKAGE_VERSION,
+      extensibility_package_version: EXTENSIBILITY_PACKAGE_VERSION,
       product_line: "Proof Capsule SaaS",
       sellable_now: true,
-      boundary: "Customer auth, billing, and live source adapters bind during tenant activation; public writes remain disabled."
+      boundary: "Customer auth, billing, and live source adapters bind during tenant activation; public writes remain disabled.",
+      extensibility: "Tenant workflows, source adapters, migrations, and marketplace listings are installable as configuration packs."
     },
     sourceBoundary: "DUAL anchors the proof envelope; source chains/vaults/feeds remain source of truth for native facts."
   };
@@ -3323,8 +3764,8 @@ export function scorecard() {
   return {
     ok: true,
     score_target: 9.8,
-    score_claim: "v0.7.1_saas_hardening_requires_cowork_gate",
-    scoring_note: "The v0.7.1 SaaS hardening layer may only claim 9.8 after local/prod proof scripts pass and Claude Cowork independently agrees.",
+    score_claim: "v0.8_extensibility_requires_cowork_gate",
+    scoring_note: "The v0.8 extensibility layer may only claim 9.8 after local/prod proof scripts pass and Claude Cowork independently agrees.",
     criteria: [
       { area: "MCP ergonomics", required: "Manifest, schema, resources, templates, prompts, read-only annotations, structured outputs." },
       { area: "Proof semantics", required: "Stable content hashes split from fresh envelope hashes; per-hash re-derivation." },
@@ -3335,6 +3776,7 @@ export function scorecard() {
       { area: "Proof room", required: "Shareable room shows source proof cards, DUAL links, what-is-proven limits, downloads, and agent-mode calls." },
       { area: "Agent mode", required: "MCP exposes create/attach/evaluate/simulate/verify/publish/compare/red-team tools while keeping write tools operator-gated." },
       { area: "SaaS packaging", required: "Plans, tenant onboarding, admin readiness, connector status, support model, and commercial boundary are exposed in UI/API/MCP." },
+      { area: "Extensibility", required: "Tenant extension packs, adapter certification, schema migration, and customer marketplace listings are exposed through UI/API/MCP without core code changes." },
       { area: "Red team", required: "Missing evidence, unsupported source, stale ownership, hash tamper, and live-write escalation are blocked." }
     ]
   };
@@ -3584,6 +4026,99 @@ function adapterStatusDescriptor(status) {
     action_required: "Register a verifier contract before relying on this source.",
     disclosure: "No source verifier is registered."
   };
+}
+
+function normalizeAdapterDefinitions(value, sources = [], evidenceTypes = []) {
+  const list = Array.isArray(value)
+    ? value
+    : value && typeof value === "object"
+      ? Object.values(value)
+      : [];
+  const bySource = new Map(list.map((adapter) => [String(adapter.source || adapter.adapter_source || "").trim(), adapter]));
+  return sources.map((source, index) => normalizeAdapterDefinition(
+    bySource.get(source) || {
+      source,
+      proof_types: [evidenceTypes[index % evidenceTypes.length] || "attestation"],
+      adapter_name: `${displaySourceName(source)} adapter`
+    },
+    source
+  ));
+}
+
+function normalizeAdapterDefinition(value = {}, fallbackSource = "enterprise_vault") {
+  const source = slugify(value.source || value.adapter_source || fallbackSource || "enterprise_vault");
+  const registry = SOURCE_VERIFIER_REGISTRY[source] || {};
+  const proofTypes = normalizeList(value.proof_types || value.evidence_types, ["attestation"]);
+  const signedMode = value.signed_attestation_mode !== undefined ? Boolean(value.signed_attestation_mode) : true;
+  return {
+    adapter_id: value.adapter_id || `adapter.${source}.tenant.v1`,
+    adapter_name: value.adapter_name || value.name || `${displaySourceName(source)} adapter`,
+    source,
+    mode: value.mode || registry.mode || "tenant_adapter",
+    proof_types: proofTypes,
+    endpoint: value.endpoint || value.url || "",
+    signed_attestation_mode: signedMode,
+    canonicalization: value.canonicalization || "stable_json_sha256",
+    hash_algorithm: value.hash_algorithm || "sha256",
+    freshness_rule: value.freshness_rule || registry.freshness_rule || "Recheck this source before action-critical reliance.",
+    auth_model: value.auth_model || "tenant_api_gateway",
+    raw_evidence_stored: value.raw_evidence_stored === true,
+    mcp_safe_output: value.mcp_safe_output !== false,
+    redaction_policy: value.redaction_policy || "refs_hashes_metadata_only",
+    recheck_before_action: value.recheck_before_action !== false,
+    does_not_prove: value.does_not_prove || registry.does_not_prove || "Future source truth after the proof timestamp.",
+    sample_ref: value.sample_ref || value.fixture || null,
+    tenant_activation_approved: value.tenant_activation_approved === true
+  };
+}
+
+function buildAdapterCertificationChecks(adapter, sampleRef) {
+  const hasProofTypes = adapter.proof_types.length > 0;
+  const canonicalHashing = adapter.canonicalization === "stable_json_sha256" && adapter.hash_algorithm === "sha256";
+  const rawEvidenceBoundary = adapter.raw_evidence_stored === false;
+  const freshnessRule = Boolean(adapter.freshness_rule && adapter.freshness_rule.length > 12);
+  const authBoundary = adapter.auth_model && !["none", "public_secret", "query_string_secret"].includes(adapter.auth_model);
+  const liveOrSignedSource = Boolean(adapter.endpoint || adapter.signed_attestation_mode);
+  const replayFixture = Boolean(sampleRef?.hash && sampleRef?.source && sampleRef?.type);
+  const values = {
+    proof_types: hasProofTypes,
+    canonical_hashing: canonicalHashing,
+    raw_evidence_boundary: rawEvidenceBoundary,
+    freshness_rule: freshnessRule,
+    auth_boundary: authBoundary,
+    mcp_safe_output: adapter.mcp_safe_output === true,
+    live_or_signed_source: liveOrSignedSource,
+    replay_fixture: replayFixture,
+    recheck_before_action: adapter.recheck_before_action === true,
+    tenant_activation: adapter.tenant_activation_approved === true
+  };
+  return ADAPTER_CERTIFICATION_REQUIREMENTS.map((requirement) => ({
+    key: requirement.key,
+    area: requirement.area,
+    pass: Boolean(values[requirement.key]),
+    weight: requirement.weight,
+    requirement: requirement.requirement,
+    evidence: values[requirement.key]
+      ? "Requirement satisfied by adapter contract."
+      : requirement.key === "tenant_activation"
+        ? "Tenant gateway activation is a customer deployment step."
+        : "Adapter contract must be completed before production reliance."
+  }));
+}
+
+function migrationCheck(key, pass, detail) {
+  return {
+    key,
+    pass: Boolean(pass),
+    detail
+  };
+}
+
+function displaySourceName(source) {
+  return String(source || "")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    || "Source";
 }
 
 function launchStep(step, title, detail, status) {

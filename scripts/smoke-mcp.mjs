@@ -24,6 +24,7 @@ for (const required of [
   "evaluate_capsule_policy",
   "generate_agent_handoff_pack",
   "get_admin_control_plane",
+  "get_extensibility_kit",
   "get_proof_room",
   "get_public_verifier_page",
   "get_saas_readiness",
@@ -39,6 +40,9 @@ for (const required of [
   "list_source_verifiers",
   "list_workflow_templates",
   "mint_proof_capsule_live",
+  "build_extension_pack",
+  "certify_source_adapter",
+  "plan_schema_migration",
   "plan_transition_queue",
   "red_team_capsule",
   "replay_workflow_capsule",
@@ -86,6 +90,10 @@ for (const required of [
   "capsule://saas/onboarding",
   "capsule://saas/plans",
   "capsule://saas/readiness",
+  "capsule://extensions/adapter-contract",
+  "capsule://extensions/kit",
+  "capsule://extensions/migration",
+  "capsule://extensions/scorecard",
   "capsule://workflows"
 ]) {
   if (!resourceUris.includes(required)) throw new Error(`Missing resource: ${required}`);
@@ -107,7 +115,7 @@ if (!templates.resourceTemplates.some((template) => template.uriTemplate === "ca
 
 const prompts = await client.listPrompts();
 const promptNames = prompts.prompts.map((prompt) => prompt.name);
-for (const required of ["proof_capsule_review", "mcp_client_handoff", "red_team_capsule_boundary", "design_proof_capsule_workflow", "operate_capsule_transition", "compare_capsule_versions", "publish_proof_capsule_verifier_page", "supercharge_proof_capsule", "launch_proof_capsule_saas_tenant"]) {
+for (const required of ["proof_capsule_review", "mcp_client_handoff", "red_team_capsule_boundary", "design_proof_capsule_workflow", "operate_capsule_transition", "compare_capsule_versions", "publish_proof_capsule_verifier_page", "supercharge_proof_capsule", "launch_proof_capsule_saas_tenant", "extend_proof_capsule_product"]) {
   if (!promptNames.includes(required)) throw new Error(`Missing prompt: ${required}`);
 }
 
@@ -306,6 +314,62 @@ if (!adminPlane.structuredContent?.admin_plane_id || !adminPlane.structuredConte
   throw new Error("Admin control plane is incomplete.");
 }
 
+const extensibilityKit = await client.callTool({
+  name: "get_extensibility_kit",
+  arguments: {}
+});
+if (
+  extensibilityKit.structuredContent?.extensibility_score < 98
+  || extensibilityKit.structuredContent?.score_basis?.score_type !== "computed_weighted_extensibility_controls"
+  || !extensibilityKit.structuredContent?.adapter_plugin_contract?.certification_requirements?.length
+) {
+  throw new Error("Extensibility kit is incomplete.");
+}
+
+const extensionPack = await client.callTool({
+  name: "build_extension_pack",
+  arguments: {
+    tenant_name: "Acme Proof Operations",
+    extension_name: "Supplier compliance proof room",
+    use_case: "supplier onboarding approval with tokenised attestations and DUAL state",
+    subject_type: "supplier_record",
+    states: "Requested, Evidence ready, Approved, Archived",
+    evidence_types: "identity, compliance, mandate, settlement",
+    sources: "enterprise_vault, counterparty_registry, dual, payment_preview",
+    endpoint: url
+  }
+});
+if (!extensionPack.structuredContent?.extension_pack_id || extensionPack.structuredContent?.requires_code_change !== false || !extensionPack.structuredContent?.marketplace_listing?.acceptance_gates?.length) {
+  throw new Error("Extension pack builder is incomplete.");
+}
+
+const adapterCertification = await client.callTool({
+  name: "certify_source_adapter",
+  arguments: {
+    source: "enterprise_vault",
+    proof_types: "identity, compliance",
+    auth_model: "tenant_api_gateway",
+    raw_evidence_stored: false,
+    signed_attestation_mode: true,
+    recheck_before_action: true
+  }
+});
+if (adapterCertification.structuredContent?.certification_score < 98 || adapterCertification.structuredContent?.adapter_contract?.raw_evidence_stored !== false) {
+  throw new Error("Adapter certification harness is incomplete.");
+}
+
+const migrationPlan = await client.callTool({
+  name: "plan_schema_migration",
+  arguments: {
+    from_version: "proof-capsule-workflow-draft.v0.2",
+    to_version: "proof-capsule-extension.v0.1",
+    extension_manifest: extensionPack.structuredContent.extension_manifest
+  }
+});
+if (!migrationPlan.structuredContent?.ok || !migrationPlan.structuredContent?.migration_steps?.some((step) => step.action === "readback")) {
+  throw new Error("Schema migration planner is incomplete.");
+}
+
 const created = await client.callTool({
   name: "create_capsule",
   arguments: { scenario: "universal_proof_capsule", base_url: "http://127.0.0.1:4184", endpoint: url }
@@ -466,6 +530,11 @@ console.log(JSON.stringify({
   saasPackageScore: saasReadiness.structuredContent.package_readiness_score,
   saasPackageScoreType: saasReadiness.structuredContent.package_readiness_basis.score_type,
   saasActivationScore: saasReadiness.structuredContent.tenant_activation_score,
+  extensibilityScore: extensibilityKit.structuredContent.extensibility_score,
+  extensibilityScoreType: extensibilityKit.structuredContent.score_basis.score_type,
+  extensionPackId: extensionPack.structuredContent.extension_pack_id,
+  adapterCertificationScore: adapterCertification.structuredContent.certification_score,
+  migrationId: migrationPlan.structuredContent.migration_id,
   saasPlanCount: saasPlans.structuredContent.plan_count,
   tenantWorkspaceId: tenantPlan.structuredContent.workspace_id,
   adminPlaneId: adminPlane.structuredContent.admin_plane_id,

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Proof Capsule Control Desk</title>
-    <link rel="stylesheet" href="/styles.css?v=0.7.1-saas2">
+    <link rel="stylesheet" href="/styles.css?v=0.8.0-extensibility">
   </head>
   <body>
     <header class="topbar">
@@ -157,6 +157,89 @@
               <strong id="connectorStatus">Loading</strong>
             </div>
             <div id="connectorStack" class="saas-stack"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="extensionStudioPanel" class="panel extension-studio" aria-label="Extension studio">
+        <div class="panel-title">
+          <span>Extension studio</span>
+          <strong id="extensionStage">Loading</strong>
+        </div>
+        <div class="saas-summary" id="extensionSummary"></div>
+        <div class="saas-grid">
+          <section>
+            <div class="panel-title compact-title">
+              <span>Build extension pack</span>
+              <strong id="extensionBuildStatus">Config ready</strong>
+            </div>
+            <label for="extensionName">Extension name</label>
+            <input id="extensionName" type="text" value="Supplier compliance proof room">
+            <div class="form-grid">
+              <div>
+                <label for="extensionSubjectType">Subject type</label>
+                <input id="extensionSubjectType" type="text" value="supplier_record">
+              </div>
+              <div>
+                <label for="extensionStates">States</label>
+                <input id="extensionStates" type="text" value="Requested, Evidence ready, Approved, Archived">
+              </div>
+            </div>
+            <label for="extensionEvidenceTypes">Evidence types</label>
+            <input id="extensionEvidenceTypes" type="text" value="identity, compliance, mandate, settlement">
+            <label for="extensionSources">Sources</label>
+            <input id="extensionSources" type="text" value="enterprise_vault, counterparty_registry, dual, payment_preview">
+            <button id="buildExtensionBtn" type="button">Build extension pack</button>
+            <div id="extensionPackStack" class="saas-stack"></div>
+          </section>
+          <section>
+            <div class="panel-title compact-title">
+              <span>Adapter certification</span>
+              <strong id="adapterStatus">Certifiable</strong>
+            </div>
+            <div class="form-grid">
+              <div>
+                <label for="adapterSource">Source</label>
+                <input id="adapterSource" type="text" value="enterprise_vault">
+              </div>
+              <div>
+                <label for="adapterAuthModel">Auth model</label>
+                <select id="adapterAuthModel">
+                  <option value="tenant_api_gateway">Tenant API gateway</option>
+                  <option value="signed_attestation">Signed attestation</option>
+                  <option value="oauth_private_app">OAuth private app</option>
+                </select>
+              </div>
+            </div>
+            <label for="adapterProofTypes">Proof types</label>
+            <input id="adapterProofTypes" type="text" value="identity, compliance">
+            <button id="certifyAdapterBtn" type="button">Certify adapter</button>
+            <div id="adapterCertStack" class="saas-stack"></div>
+          </section>
+          <section>
+            <div class="panel-title compact-title">
+              <span>Schema migration</span>
+              <strong id="migrationStatus">Versioned</strong>
+            </div>
+            <div class="form-grid">
+              <div>
+                <label for="migrationFrom">From</label>
+                <input id="migrationFrom" type="text" value="proof-capsule-workflow-draft.v0.2">
+              </div>
+              <div>
+                <label for="migrationTo">To</label>
+                <input id="migrationTo" type="text" value="proof-capsule-extension.v0.1">
+              </div>
+            </div>
+            <button id="planMigrationBtn" type="button">Plan migration</button>
+            <div id="migrationStack" class="saas-stack"></div>
+          </section>
+          <section>
+            <div class="panel-title compact-title">
+              <span>Marketplace gates</span>
+              <strong>No-code install</strong>
+            </div>
+            <div id="extensionMarketplaceStack" class="saas-stack"></div>
           </section>
         </div>
       </section>
@@ -479,6 +562,6 @@
       </section>
     </main>
 
-    <script type="module" src="/client.js?v=0.7.1-saas2"></script>
+    <script type="module" src="/client.js?v=0.8.0-extensibility"></script>
   </body>
 </html>

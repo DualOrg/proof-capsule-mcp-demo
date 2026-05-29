@@ -7,20 +7,24 @@ import {
   buildProofTimeline,
   buildProofRoom,
   buildPublicVerifierPage,
+  buildExtensionPack,
   buildWorkflowDraft,
   compareCapsules,
   composeProofCapsule,
   createTenantOnboardingPlan,
+  certifySourceAdapter,
   diagnoseCapsule,
   evaluateCapsulePolicy,
   generateAgentHandoffPack,
   getAdminControlPlane,
+  getExtensibilityKit,
   getSaasReadiness,
   getWorkflowDefinition,
   listScenarioMarketplace,
   listSaasPlans,
   listVerifierMarketplace,
   listSourceVerifiers,
+  planSchemaMigration,
   planTransitionQueue,
   redTeamCapsule,
   replayWorkflowCapsule,
@@ -321,6 +325,22 @@ async function handleApi(req, res, url) {
         dual_status: await getDualStatusLive()
       }));
     }
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/extensions/kit") {
+    return sendJson(res, 200, getExtensibilityKit());
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/extensions/build") {
+    return sendJson(res, 200, buildExtensionPack(await readBody(req)));
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/extensions/certify") {
+    return sendJson(res, 200, certifySourceAdapter(await readBody(req)));
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/extensions/migration") {
+    return sendJson(res, 200, planSchemaMigration(await readBody(req)));
   }
 
   if (req.method === "POST" && url.pathname === "/api/agent/handoff") {

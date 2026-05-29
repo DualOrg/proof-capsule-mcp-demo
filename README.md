@@ -4,7 +4,7 @@ Proof Capsule is the use-case-agnostic DUAL primitive behind TradeFlow-style pro
 
 This sandbox exposes that primitive through a Streamable HTTP MCP endpoint and a small UI. In production it can read from a live DUAL object and execute operator-gated event-bus mint/sync writes.
 
-The v0.7.1 model turns that surface into a SaaS package: universal multi-proof capsules, shareable proof rooms, scenario marketplace, agent-mode MCP aliases, workflow simulation, proof attachment, tenant onboarding, pricing/plan packaging, admin readiness, connector status, and the same operator-gated DUAL write boundary. Live writes remain operator-gated.
+The v0.8 model turns that surface into an extensible SaaS package: universal multi-proof capsules, shareable proof rooms, scenario marketplace, agent-mode MCP aliases, workflow simulation, proof attachment, tenant onboarding, pricing/plan packaging, admin readiness, connector status, a tenant extension studio, adapter certification, schema migration, and the same operator-gated DUAL write boundary. Live writes remain operator-gated.
 
 ## Scope
 
@@ -131,6 +131,10 @@ Tools:
 - `list_saas_plans`
 - `create_tenant_onboarding_plan`
 - `get_admin_control_plane`
+- `get_extensibility_kit`
+- `build_extension_pack`
+- `certify_source_adapter`
+- `plan_schema_migration`
 - `sync_proof_capsule_live`
 - `mint_proof_capsule_live`
 
@@ -155,6 +159,10 @@ Resources:
 - `capsule://saas/plans`
 - `capsule://saas/onboarding`
 - `capsule://saas/admin`
+- `capsule://extensions/kit`
+- `capsule://extensions/scorecard`
+- `capsule://extensions/adapter-contract`
+- `capsule://extensions/migration`
 
 Resource template:
 
@@ -175,8 +183,33 @@ Prompts:
 - `publish_proof_capsule_verifier_page`
 - `supercharge_proof_capsule`
 - `launch_proof_capsule_saas_tenant`
+- `extend_proof_capsule_product`
 
-## v0.7.1 SaaS Launch Desk
+## v0.8 Extension Studio
+
+The public app now includes a real extensibility layer, not just pre-coded scenarios:
+
+- **Extensibility score:** `extensibility_score` is computed from weighted controls, with the remaining holdback being customer gateway activation.
+- **Extension pack builder:** turns tenant config into a workflow definition, capsule preview, adapter certification summary, migration plan, marketplace listing, MCP handoff, and acceptance gates.
+- **Source adapter certification:** checks proof types, canonical hashing, raw-evidence boundary, freshness rules, auth model, MCP-safe output, live/signed source mode, replay fixture, action recheck, and tenant activation.
+- **Schema migration planner:** emits snapshot, transform, re-derive, replay, public-verifier, operator-approval, readback, and rollback steps for versioned extension packs.
+- **Customer marketplace model:** supports `tenant_private`, `partner_shared`, and `public_template` publication states without core code changes.
+
+REST endpoints:
+
+- `GET /api/extensions/kit`
+- `POST /api/extensions/build`
+- `POST /api/extensions/certify`
+- `POST /api/extensions/migration`
+
+MCP tools:
+
+- `get_extensibility_kit`
+- `build_extension_pack`
+- `certify_source_adapter`
+- `plan_schema_migration`
+
+## v0.8 SaaS Launch Desk
 
 The public app now shows a SaaS control plane, not just a proof demo:
 
@@ -185,6 +218,7 @@ The public app now shows a SaaS control plane, not just a proof demo:
 - **Admin plane:** exposes launch readiness, proof operations, connector health, write governance, audit schema, support model, and incident runbook.
 - **Connector readiness:** distinguishes live DUAL readback from demo/source-reference adapters that need tenant-specific production integration, both in the API payload and the visible UI badges.
 - **Computed readiness:** `package_readiness_score` is derived from weighted package controls, with customer auth/billing kept as a visible tenant-activation holdback instead of a hardcoded score.
+- **Extensibility readiness:** `get_saas_readiness` includes the extension score, score basis, no-code pack builder, adapter certification, migration planner, and marketplace publication state.
 - **Pilot sales pack:** see [docs/proof-capsule-pilot-sales-pack.md](docs/proof-capsule-pilot-sales-pack.md) for buyer story, demo route, acceptance gates, and objection handling.
 
 The honest SaaS boundary is explicit:

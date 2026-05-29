@@ -8,6 +8,10 @@ let saasReadiness = null;
 let saasPlans = null;
 let tenantPlan = null;
 let adminPlane = null;
+let extensionKit = null;
+let extensionPack = null;
+let adapterCertification = null;
+let migrationPlan = null;
 let publicMode = false;
 let reviewerMode = false;
 let reviewerStepIndex = 0;
@@ -124,6 +128,18 @@ const reviewerSteps = [
       ["Package", saasReadiness?.package_readiness_score ? `${saasReadiness.package_readiness_score}/100` : "-"],
       ["Tenant", tenantPlan?.workspace_id || "pending"],
       ["Sellable", saasReadiness?.sellable_now ? "yes" : "checking"]
+    ]
+  },
+  {
+    id: "extensions",
+    targetId: "extensionStudioPanel",
+    title: "Extend without code",
+    body: "The Extension Studio turns a tenant workflow into a config pack with adapter certification, migration plan, marketplace listing, and read-safe MCP handoff.",
+    facts: () => [
+      ["Score", extensionKit?.extensibility_score ? `${extensionKit.extensibility_score}/100` : "Loading"],
+      ["Pack", extensionPack?.extension_pack_id || "sample ready"],
+      ["Adapter", adapterCertification?.certification_level || "certifiable"],
+      ["Writes", "operator gated"]
     ]
   },
   {
@@ -511,6 +527,92 @@ async function loadSaasDesk() {
   ]);
   renderSaasDesk(readiness, plans, onboarding, admin);
   return { readiness, plans, onboarding, admin };
+}
+
+function renderExtensionStudio(kit, pack = extensionPack, certification = adapterCertification, migration = migrationPlan) {
+  extensionKit = kit || extensionKit;
+  extensionPack = pack || extensionPack;
+  adapterCertification = certification || adapterCertification;
+  migrationPlan = migration || migrationPlan;
+  if (!extensionKit) return;
+
+  $("extensionStage").textContent = `${extensionKit.extensibility_score || "-"} / 100`;
+  $("extensionBuildStatus").textContent = extensionPack?.extension_pack_id ? "Pack ready" : "Config ready";
+  $("adapterStatus").textContent = adapterCertification?.certification_level
+    ? displayToken(adapterCertification.certification_level)
+    : "Certifiable";
+  $("migrationStatus").textContent = migrationPlan?.migration_id ? "Plan ready" : "Versioned";
+
+  $("extensionSummary").innerHTML = [
+    ["Extensibility score", `${extensionKit.extensibility_score || "-"} / 100`],
+    ["Score basis", displayToken(extensionKit.score_basis?.score_type || "not declared")],
+    ["Install mode", extensionPack?.install_mode || extensionKit.marketplace_contract?.no_code_claim || "tenant config"],
+    ["Holdback", (extensionKit.score_basis?.holdbacks || []).map((item) => item.area).join(", ") || "none"]
+  ].map(([label, value]) => `
+    <div class="saas-metric">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `).join("");
+
+  $("extensionPackStack").innerHTML = extensionPack ? [
+    ["Pack", extensionPack.extension_pack_id],
+    ["Extension", extensionPack.extension_manifest?.extension_name],
+    ["No-code install", extensionPack.requires_code_change ? "requires code" : "config only"],
+    ["Marketplace", `${displayToken(extensionPack.marketplace_listing?.status)} · ${displayToken(extensionPack.marketplace_listing?.visibility)}`],
+    ["Certified adapters", `${extensionPack.certification_summary?.certified || 0}/${extensionPack.certification_summary?.adapters || 0}`]
+  ].map(([label, value]) => `
+    <div class="saas-row ready">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(String(value || "-"))}</strong>
+    </div>
+  `).join("") : (extensionKit.extension_surfaces || []).map((surface) => `
+    <div class="saas-row">
+      <span>${escapeHtml(surface.surface)}</span>
+      <strong>${escapeHtml(surface.capability)}</strong>
+    </div>
+  `).join("");
+
+  $("adapterCertStack").innerHTML = adapterCertification ? (adapterCertification.checks || []).map((check) => `
+    <div class="saas-row ${check.pass ? "ready" : ""}">
+      <span>${escapeHtml(check.pass ? "pass" : "holdback")}</span>
+      <strong>${escapeHtml(check.area)} · ${escapeHtml(String(check.weight))}</strong>
+      <p>${escapeHtml(check.evidence)}</p>
+    </div>
+  `).join("") : (extensionKit.adapter_plugin_contract?.certification_requirements || []).slice(0, 5).map((item) => `
+    <div class="saas-row">
+      <span>${escapeHtml(String(item.weight))} pts</span>
+      <strong>${escapeHtml(item.area)}</strong>
+      <p>${escapeHtml(item.requirement)}</p>
+    </div>
+  `).join("");
+
+  $("migrationStack").innerHTML = migrationPlan ? (migrationPlan.migration_steps || []).map((step) => `
+    <div class="saas-row ready">
+      <span>${escapeHtml(step.action)}</span>
+      <strong>${escapeHtml(String(step.step))}. ${escapeHtml(step.detail)}</strong>
+    </div>
+  `).join("") : (extensionKit.migration_contract?.safe_migration_steps || []).map((step) => `
+    <div class="saas-row">
+      <span>step</span>
+      <strong>${escapeHtml(displayToken(step))}</strong>
+    </div>
+  `).join("");
+
+  $("extensionMarketplaceStack").innerHTML = (extensionPack?.marketplace_listing?.acceptance_gates || extensionKit.marketplace_contract?.publication_gates || []).map((gate) => `
+    <div class="saas-row ready">
+      <span>gate</span>
+      <strong>${escapeHtml(typeof gate === "string" ? gate : gate.gate)}</strong>
+    </div>
+  `).join("");
+
+  refreshReviewChrome();
+}
+
+async function loadExtensionStudio() {
+  const kit = await jsonFetch("/api/extensions/kit");
+  renderExtensionStudio(kit);
+  return kit;
 }
 
 function renderProofRoom(roomPayload) {
@@ -1039,6 +1141,81 @@ async function generateTenantPlan() {
   refreshReviewChrome();
 }
 
+async function buildExtensionPack() {
+  const payload = await jsonFetch("/api/extensions/build", {
+    method: "POST",
+    body: JSON.stringify({
+      tenant_name: $("tenantName").value,
+      extension_name: $("extensionName").value,
+      use_case: $("tenantUseCase").value,
+      subject_type: $("extensionSubjectType").value,
+      states: $("extensionStates").value,
+      evidence_types: $("extensionEvidenceTypes").value,
+      sources: $("extensionSources").value,
+      endpoint: `${window.location.origin}/mcp`
+    })
+  });
+  extensionPack = payload;
+  if (payload.capsule_preview) {
+    renderCapsule(payload.capsule_preview, "Extension capsule preview");
+    renderWorkflow(payload.workflow_definition, null);
+    renderEvidenceVerification(payload.workflow_validation);
+  }
+  renderExtensionStudio(extensionKit, payload, adapterCertification, payload.migration_plan);
+  $("outputTitle").textContent = "Tenant extension pack";
+  $("output").textContent = JSON.stringify(payload, null, 2);
+}
+
+async function certifyAdapter() {
+  const payload = await jsonFetch("/api/extensions/certify", {
+    method: "POST",
+    body: JSON.stringify({
+      source: $("adapterSource").value,
+      adapter_name: `${displayToken($("adapterSource").value)} tenant adapter`,
+      proof_types: $("adapterProofTypes").value,
+      auth_model: $("adapterAuthModel").value,
+      canonicalization: "stable_json_sha256",
+      hash_algorithm: "sha256",
+      freshness_rule: "Recheck this source before action-critical reliance.",
+      raw_evidence_stored: false,
+      recheck_before_action: true,
+      signed_attestation_mode: true,
+      sample_ref: {
+        evidence_id: `${$("adapterSource").value.toUpperCase()}-CERT-001`,
+        type: ($("adapterProofTypes").value.split(",")[0] || "attestation").trim(),
+        source: $("adapterSource").value,
+        ref: `${$("adapterSource").value}://certification/sample`,
+        summary: "Tenant adapter certification fixture."
+      }
+    })
+  });
+  adapterCertification = payload;
+  renderExtensionStudio(extensionKit, extensionPack, payload, migrationPlan);
+  $("outputTitle").textContent = "Source adapter certification";
+  $("output").textContent = JSON.stringify(payload, null, 2);
+}
+
+async function planExtensionMigration() {
+  const manifest = extensionPack?.extension_manifest || {
+    extension_name: $("extensionName").value,
+    states: $("extensionStates").value.split(",").map((item) => item.trim()).filter(Boolean),
+    evidence_types: $("extensionEvidenceTypes").value.split(",").map((item) => item.trim()).filter(Boolean),
+    sources: $("extensionSources").value.split(",").map((item) => item.trim()).filter(Boolean)
+  };
+  const payload = await jsonFetch("/api/extensions/migration", {
+    method: "POST",
+    body: JSON.stringify({
+      from_version: $("migrationFrom").value,
+      to_version: $("migrationTo").value,
+      extension_manifest: manifest
+    })
+  });
+  migrationPlan = payload;
+  renderExtensionStudio(extensionKit, extensionPack, adapterCertification, payload);
+  $("outputTitle").textContent = "Extension schema migration plan";
+  $("output").textContent = JSON.stringify(payload, null, 2);
+}
+
 async function planTransition() {
   const payload = await jsonFetch("/api/transition/plan", {
     method: "POST",
@@ -1204,6 +1381,9 @@ $("verifyEvidenceBtn").addEventListener("click", () => verifyEvidence().then((pa
 }).catch(showError));
 $("buildWorkflowBtn").addEventListener("click", () => buildWorkflow().catch(showError));
 $("generateTenantPlanBtn").addEventListener("click", () => generateTenantPlan().catch(showError));
+$("buildExtensionBtn").addEventListener("click", () => buildExtensionPack().catch(showError));
+$("certifyAdapterBtn").addEventListener("click", () => certifyAdapter().catch(showError));
+$("planMigrationBtn").addEventListener("click", () => planExtensionMigration().catch(showError));
 $("planTransitionBtn").addEventListener("click", () => planTransition().catch(showError));
 $("applyTransitionBtn").addEventListener("click", () => applyTransitionLocal().catch(showError));
 $("syncTransitionBtn").addEventListener("click", () => syncQueuedTransition().catch(showError));
@@ -1218,6 +1398,7 @@ Promise.resolve()
   .then(async (status) => {
     await loadScenarioMarketplace();
     await loadSaasDesk();
+    await loadExtensionStudio();
     return status;
   })
   .then(async (status) => {
