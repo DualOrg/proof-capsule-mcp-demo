@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 
 export const SERVICE_NAME = "dual-proof-capsule-mcp";
-export const SERVICE_VERSION = "0.3.0";
+export const SERVICE_VERSION = "0.4.0";
 export const CAPSULE_SCHEMA_VERSION = "proof-capsule.v0.1";
+export const CUSTOM_WORKFLOW_SCHEMA_VERSION = "proof-capsule-workflow-draft.v0.1";
 export const GENERATED_AT = "2026-05-29T00:00:00.000Z";
 export const WRITE_BOUNDARY = "Public read/generate/verify. Live DUAL writes are available only through server-side operator-gated endpoints; no public writes, wallet actions, raw evidence storage, or settlement execution.";
 
@@ -1569,6 +1570,514 @@ export function replayWorkflowCapsule(input = {}) {
   };
 }
 
+export function listVerifierMarketplace(input = {}) {
+  const selectedSources = new Set(input.sources || input.selected_sources || []);
+  const verifiers = Object.values(SOURCE_VERIFIER_REGISTRY).map((verifier) => ({
+    ...verifier,
+    selected: selectedSources.size ? selectedSources.has(verifier.source) : false,
+    action_readiness: verifier.live_adapter_status === "configured_for_canonical_capsule"
+      ? "live_readback_ready"
+      : verifier.live_adapter_status === "demo_reference"
+        ? "demo_reference_ready"
+        : "adapter_required",
+    module_contract_hash: hashValue({
+      verifier_id: verifier.verifier_id,
+      source: verifier.source,
+      mode: verifier.mode,
+      proves: verifier.proves,
+      does_not_prove: verifier.does_not_prove,
+      freshness_rule: verifier.freshness_rule
+    })
+  }));
+
+  return {
+    ok: true,
+    marketplace_id: "proof-capsule-source-verifier-marketplace-v0.1",
+    module_count: verifiers.length,
+    selected_count: verifiers.filter((verifier) => verifier.selected).length,
+    source_boundary: "Modules verify source facts at a point in time. DUAL anchors the policy-bound decision and state transition.",
+    modules: verifiers,
+    suggested_minimum_modules: ["dual", "mandate_policy", "enterprise_vault", "payment_preview"],
+    write_boundary: WRITE_BOUNDARY
+  };
+}
+
+export function verifyEvidenceRefs(input = {}) {
+  const capsule = input.capsule?.schema_version ? input.capsule : composeProofCapsule(input);
+  const scenario = normalizeScenario(input.scenario || scenarioFromCapsule(capsule));
+  const workflow = getWorkflowDefinition({ scenario });
+  const transition = findWorkflowTransition(workflow, capsule.state_transition);
+  const requiredEvidence = input.required_evidence || transition?.required_evidence || capsule.policy?.required_anchor_types || [];
+  const normalizedRefs = (input.evidence_refs || capsule.evidence_refs || []).map((ref) => normalizeEvidenceRef(ref));
+  const evidenceTypes = new Set(normalizedRefs.map((ref) => ref.type));
+  const results = normalizedRefs.map((ref) => {
+    const verifier = SOURCE_VERIFIER_REGISTRY[ref.source];
+    const registered = Boolean(verifier);
+    const hasHash = Boolean(ref.hash);
+    const status = !registered
+      ? "not_sufficient"
+      : !hasHash
+        ? "missing"
+        : ref.freshness_status === "stale" || ref.stale === true
+          ? "stale"
+          : "verified";
+    return {
+      evidence_id: ref.evidence_id,
+      type: ref.type,
+      source: ref.source,
+      status,
+      verifier_id: verifier?.verifier_id || "missing",
+      adapter_status: verifier?.live_adapter_status || "missing",
+      hash: ref.hash || null,
+      hash_auto_derived: Boolean(ref.hash_auto_derived),
+      point_in_time: ref.point_in_time || null,
+      proves: verifier?.proves || "No registered verifier contract.",
+      does_not_prove: verifier?.does_not_prove || "The source cannot be relied on until a verifier contract is registered.",
+      recheck_rule: verifier?.freshness_rule || "Register a verifier before action-critical reliance.",
+      sufficient_for_required_type: requiredEvidence.includes(ref.type)
+    };
+  });
+  for (const type of requiredEvidence) {
+    if (!evidenceTypes.has(type)) {
+      results.push({
+        evidence_id: `missing:${type}`,
+        type,
+        source: null,
+        status: "missing",
+        verifier_id: null,
+        adapter_status: "missing",
+        hash: null,
+        hash_auto_derived: false,
+        point_in_time: null,
+        proves: "No evidence reference supplied for this required type.",
+        does_not_prove: "Policy cannot approve this transition without the missing evidence type.",
+        recheck_rule: "Attach evidence or choose a different workflow transition.",
+        sufficient_for_required_type: false
+      });
+    }
+  }
+
+  const summary = {
+    verified: results.filter((item) => item.status === "verified").length,
+    stale: results.filter((item) => item.status === "stale").length,
+    missing: results.filter((item) => item.status === "missing").length,
+    not_sufficient: results.filter((item) => item.status === "not_sufficient").length
+  };
+
+  return {
+    ok: summary.missing === 0 && summary.not_sufficient === 0,
+    scenario,
+    required_evidence: requiredEvidence,
+    normalized_evidence_refs: normalizedRefs,
+    results,
+    summary,
+    evidence_set_hash: hashValue(normalizedRefs),
+    caveats: [
+      "This verifier checks declared refs, hashes, source contracts, and required categories.",
+      "Source systems marked demo_reference or adapter_required still need live adapters before action-critical reliance."
+    ]
+  };
+}
+
+export function buildWorkflowDraft(input = {}) {
+  const title = String(input.title || input.workflow_title || "Custom proof capsule workflow").trim();
+  const subjectType = slugify(input.subject_type || input.subjectType || "custom_subject");
+  const states = normalizeList(input.states, ["Requested", "Evidence ready", "Approved", "Closed"]);
+  const evidenceTypes = normalizeList(input.evidence_types || input.required_evidence, ["approval", "mandate", "settlement"]);
+  const sources = normalizeList(input.sources || input.selected_sources, ["enterprise_vault", "dual", "payment_preview"]);
+  const policyGate = String(input.policy_gate || "all required evidence and source verifier contracts are present").trim();
+  const workflowId = `workflow.custom.${slugify(title)}.v1`;
+  const safeStates = states.length >= 2 ? states : ["Requested", "Approved"];
+  const primaryTransition = {
+    action: slugify(input.action || `verify_${subjectType}`),
+    from_state: safeStates[0],
+    to_state: safeStates[1],
+    required_evidence: evidenceTypes,
+    policy_gate: policyGate
+  };
+  const workflow_definition = {
+    schema_version: CUSTOM_WORKFLOW_SCHEMA_VERSION,
+    scenario: "custom_workflow",
+    workflow_id: workflowId,
+    title,
+    subject_type: subjectType,
+    dual_template: "io.dual.proof_capsule.lifecycle.v1",
+    states: safeStates,
+    current_transition: primaryTransition.action,
+    transitions: [
+      primaryTransition,
+      ...safeStates.slice(1, -1).map((state, index) => ({
+        action: `advance_${slugify(state)}`,
+        from_state: state,
+        to_state: safeStates[index + 2],
+        required_evidence: evidenceTypes,
+        policy_gate: "prior transition remains valid and no blocking evidence exists"
+      }))
+    ],
+    dual_build_contract: {
+      template: "io.dual.proof_capsule.lifecycle.v1",
+      object: "one DUAL object per workflow instance",
+      write_path: "event_bus",
+      write_execution: "operator_gated",
+      public_writes: false,
+      readback_required_after_write: true
+    }
+  };
+  const evidence_refs = evidenceTypes.map((type, index) => normalizeEvidenceRef({
+    evidence_id: `${slugify(type).toUpperCase()}-${String(index + 1).padStart(2, "0")}`,
+    type,
+    source: sources[index % sources.length] || "enterprise_vault",
+    summary: `${title} ${type} evidence reference.`,
+    ref: `${sources[index % sources.length] || "enterprise_vault"}://custom/${slugify(title)}/${slugify(type)}`
+  }));
+  const capsule = composeProofCapsule({
+    capsule_id: `PC-CUSTOM-${slugify(title).toUpperCase().slice(0, 24)}`,
+    capsule_type: input.capsule_type || "credential",
+    subject: {
+      subject_id: input.subject_id || `${subjectType.toUpperCase()}-001`,
+      label: input.subject_label || title,
+      asset_class: subjectType,
+      value_usd: Number(input.value_usd || 0),
+      state: primaryTransition.to_state,
+      current_gate: primaryTransition.to_state
+    },
+    claims: evidenceTypes.map((type) => ({
+      claim_id: `${slugify(type)}_required`,
+      type,
+      statement: `${title} requires ${type} evidence before ${primaryTransition.to_state}.`,
+      expected_source: sources[evidenceTypes.indexOf(type) % sources.length] || "enterprise_vault",
+      required: true
+    })),
+    evidence_refs,
+    external_anchors: sources.map((source) => ({
+      anchor_id: `source-${slugify(source)}`,
+      kind: "source_verifier",
+      source_of_truth: source,
+      caveat: SOURCE_VERIFIER_REGISTRY[source]?.does_not_prove || "Register this source before production reliance."
+    })),
+    policy: {
+      ...defaultPolicy(),
+      policy_id: `custom-${slugify(title)}-policy-v0.1`,
+      required_anchor_types: evidenceTypes,
+      allowed_external_chains: sources,
+      max_value_usd: Number(input.max_value_usd || 100000),
+      human_review_threshold_usd: Number(input.human_review_threshold_usd || 50000)
+    },
+    decision: {
+      result: "Draft",
+      code: "workflow_draft",
+      reason: "Draft workflow generated for review before operator-gated sync.",
+      review_required: true,
+      release_usd: 0,
+      remaining_usd: Number(input.value_usd || 0)
+    },
+    state_transition: {
+      action: primaryTransition.action,
+      actor: input.actor || "operator.workflow-builder",
+      from_state: primaryTransition.from_state,
+      to_state: primaryTransition.to_state,
+      from_gate: primaryTransition.from_state,
+      to_gate: primaryTransition.to_state,
+      occurred_at: GENERATED_AT
+    }
+  });
+  const validation = verifyEvidenceRefs({ capsule, required_evidence: evidenceTypes });
+
+  return {
+    ok: true,
+    draft_id: `draft:${hashValue({ workflow_definition, capsule: capsule.capsule_id }).slice(7, 19)}`,
+    workflow_definition,
+    capsule,
+    validation,
+    draft_hash: hashValue({ workflow_definition, capsule: contentForHash(capsule) }),
+    next_steps: [
+      "Review states and required evidence.",
+      "Attach or replace evidence refs with live source references.",
+      "Dry-run the first transition.",
+      "Use operator-gated sync only after verification passes."
+    ]
+  };
+}
+
+export function planTransitionQueue(input = {}) {
+  const capsule = input.capsule?.schema_version ? input.capsule : composeProofCapsule(input);
+  const scenario = normalizeScenario(input.scenario || scenarioFromCapsule(capsule));
+  const workflow = getWorkflowDefinition({ scenario });
+  const mergedEvidence = [
+    ...(capsule.evidence_refs || []),
+    ...(input.evidence_refs || [])
+  ].map((ref) => normalizeEvidenceRef(ref));
+  const currentState = input.from_state || capsule.state_transition?.to_state || capsule.subject?.state;
+  const transition = findNextWorkflowTransition(workflow, {
+    currentState,
+    action: input.action || input.transition_action
+  });
+  const stateTransition = transition
+    ? {
+        action: transition.action,
+        actor: input.actor || capsule.state_transition?.actor || "operator.transition-queue",
+        from_state: transition.from_state,
+        to_state: transition.to_state,
+        from_gate: transition.from_gate || transition.from_state,
+        to_gate: transition.to_gate || transition.to_state,
+        occurred_at: input.occurred_at || GENERATED_AT
+      }
+    : capsule.state_transition;
+  const queuedCapsule = composeProofCapsule({
+    ...contentForHash(capsule),
+    evidence_refs: mergedEvidence,
+    subject: {
+      ...(capsule.subject || {}),
+      state: stateTransition?.to_state || capsule.subject?.state,
+      current_gate: stateTransition?.to_gate || stateTransition?.to_state || capsule.subject?.current_gate
+    },
+    state_transition: stateTransition,
+    decision: {
+      ...(capsule.decision || {}),
+      result: transition ? "Queued" : "Blocked",
+      code: transition ? "transition_dry_run_ready" : "no_transition_available",
+      reason: transition
+        ? "Transition prepared for dry-run and optional operator-gated DUAL sync."
+        : "No matching next transition was found in the workflow definition."
+    },
+    generated_at: input.generated_at || new Date().toISOString()
+  });
+  const evidence = verifyEvidenceRefs({ scenario, capsule: queuedCapsule, required_evidence: transition?.required_evidence });
+  const replay = replayWorkflowCapsule({ scenario, capsule: queuedCapsule });
+  const verification = verifyProofCapsule({ capsule: queuedCapsule });
+  const status = transition && evidence.ok && replay.ok && verification.accepted
+    ? "ready_for_operator_sync"
+    : transition && verification.ok
+      ? "needs_recovery"
+      : "blocked";
+
+  return {
+    ok: true,
+    scenario,
+    queue_id: `queue:${shortHash(hashValue({ capsule_id: queuedCapsule.capsule_id, stateTransition, evidence_hash: queuedCapsule.hashes.evidence_hash }))}`,
+    status,
+    dry_run: input.dry_run !== false,
+    transition,
+    current_state: currentState || null,
+    queued_capsule: queuedCapsule,
+    evidence,
+    replay,
+    verification,
+    write_operation: {
+      method: "POST",
+      endpoint: "/api/capsules/sync",
+      requires_operator_token: true,
+      public_writes: false,
+      body: {
+        capsule: queuedCapsule,
+        audit: {
+          source: "proof-capsule-transition-queue",
+          scenario,
+          queue_id: `queue:${shortHash(queuedCapsule.hashes.capsule_content_hash)}`
+        }
+      }
+    },
+    recovery_actions: diagnoseCapsule({ scenario, capsule: queuedCapsule }).recovery_actions
+  };
+}
+
+export function diagnoseCapsule(input = {}) {
+  const capsule = input.capsule?.schema_version ? input.capsule : composeProofCapsule(input);
+  const scenario = normalizeScenario(input.scenario || scenarioFromCapsule(capsule));
+  const evidence = verifyEvidenceRefs({ scenario, capsule });
+  const replay = replayWorkflowCapsule({ scenario, capsule });
+  const policy = evaluateCapsulePolicy({ capsule });
+  const failures = [
+    ...evidence.results
+      .filter((item) => item.status !== "verified")
+      .map((item) => ({
+        code: `evidence_${item.status}`,
+        area: "evidence",
+        target: item.type,
+        detail: item.does_not_prove || item.recheck_rule
+      })),
+    ...replay.replay_steps
+      .filter((item) => !item.pass)
+      .map((item) => ({
+        code: item.name,
+        area: "workflow_replay",
+        target: replay.workflow_id,
+        detail: item.detail
+      })),
+    ...(policy.result === "Blocked"
+      ? [{
+          code: policy.code,
+          area: "policy",
+          target: capsule.policy?.policy_id,
+          detail: policy.reason
+        }]
+      : [])
+  ];
+  const recoveryActions = buildRecoveryActions({ failures, evidence, replay, policy });
+
+  return {
+    ok: true,
+    healthy: failures.length === 0,
+    scenario,
+    capsule_id: capsule.capsule_id,
+    policy_result: {
+      result: policy.result,
+      code: policy.code,
+      reason: policy.reason
+    },
+    failures,
+    recovery_actions: recoveryActions,
+    next_safe_action: failures.length
+      ? recoveryActions[0]?.label || "Review capsule"
+      : "Dry-run next transition or perform operator-gated sync.",
+    write_boundary: capsule.write_boundary
+  };
+}
+
+export function buildProofTimeline(input = {}) {
+  const capsule = input.capsule?.schema_version ? input.capsule : composeProofCapsule(input);
+  const scenario = normalizeScenario(input.scenario || scenarioFromCapsule(capsule));
+  const replay = replayWorkflowCapsule({ scenario, capsule });
+  const events = replay.state_timeline.map((entry) => ({
+    state: entry.state,
+    index: entry.index,
+    status: entry.status,
+    actor: entry.state === replay.next_state ? capsule.state_transition?.actor : null,
+    transition_hash: entry.state === replay.next_state ? capsule.hashes?.state_transition_hash : null,
+    decision_hash: entry.state === replay.next_state ? capsule.hashes?.decision_content_hash : null,
+    evidence_count: entry.state === replay.next_state ? capsule.evidence_refs?.length || 0 : null,
+    dual_object_url: entry.state === replay.next_state ? capsule.dual_anchor?.object_explorer_url || null : null,
+    notes: entry.status === "current"
+      ? replay.policy_result.reason
+      : entry.status === "pending"
+        ? "Awaiting future transition evidence."
+        : "Prior workflow state."
+  }));
+
+  return {
+    ok: true,
+    scenario,
+    capsule_id: capsule.capsule_id,
+    workflow_id: replay.workflow_id,
+    current_state: replay.current_state,
+    next_state: replay.next_state,
+    event_count: events.length,
+    events,
+    timeline_hash: hashValue({ workflow_id: replay.workflow_id, capsule_id: capsule.capsule_id, events }),
+    links: {
+      object: capsule.dual_anchor?.object_explorer_url || null,
+      template: capsule.dual_anchor?.template_explorer_url || null
+    }
+  };
+}
+
+export function compareCapsules(input = {}) {
+  const left = input.left?.schema_version ? input.left : composeProofCapsule({ scenario: input.left_scenario || input.scenario || "tradeflow_medical_devices" });
+  const right = input.right?.schema_version ? input.right : composeProofCapsule({ scenario: input.right_scenario || input.scenario || "tradeflow_medical_devices" });
+  const leftHashes = deriveHashes(left);
+  const rightHashes = deriveHashes(right);
+  const leftTypes = new Set((left.evidence_refs || []).map((ref) => ref.type));
+  const rightTypes = new Set((right.evidence_refs || []).map((ref) => ref.type));
+  const addedEvidence = [...rightTypes].filter((type) => !leftTypes.has(type));
+  const removedEvidence = [...leftTypes].filter((type) => !rightTypes.has(type));
+  const changedHashes = Object.keys({ ...leftHashes, ...rightHashes })
+    .filter((key) => leftHashes[key] !== rightHashes[key])
+    .map((key) => ({
+      hash: key,
+      left: leftHashes[key] || null,
+      right: rightHashes[key] || null
+    }));
+  const fieldDiffs = [
+    diffField("capsule_id", left.capsule_id, right.capsule_id),
+    diffField("decision.result", left.decision?.result, right.decision?.result),
+    diffField("decision.code", left.decision?.code, right.decision?.code),
+    diffField("state_transition.from_state", left.state_transition?.from_state, right.state_transition?.from_state),
+    diffField("state_transition.to_state", left.state_transition?.to_state, right.state_transition?.to_state),
+    diffField("policy.policy_id", left.policy?.policy_id, right.policy?.policy_id),
+    diffField("subject.value_usd", left.subject?.value_usd, right.subject?.value_usd)
+  ].filter(Boolean);
+
+  return {
+    ok: true,
+    same_content: leftHashes.capsule_content_hash === rightHashes.capsule_content_hash,
+    left: {
+      capsule_id: left.capsule_id,
+      content_hash: leftHashes.capsule_content_hash,
+      state: left.state_transition?.to_state || left.subject?.state
+    },
+    right: {
+      capsule_id: right.capsule_id,
+      content_hash: rightHashes.capsule_content_hash,
+      state: right.state_transition?.to_state || right.subject?.state
+    },
+    field_diffs: fieldDiffs,
+    evidence_diff: {
+      added_types: addedEvidence,
+      removed_types: removedEvidence,
+      left_count: left.evidence_refs?.length || 0,
+      right_count: right.evidence_refs?.length || 0
+    },
+    changed_hashes: changedHashes,
+    compare_hash: hashValue({
+      left: left.hashes?.capsule_content_hash,
+      right: right.hashes?.capsule_content_hash,
+      fieldDiffs,
+      addedEvidence,
+      removedEvidence,
+      changedHashes: changedHashes.map((item) => item.hash)
+    })
+  };
+}
+
+export function generateAgentHandoffPack(input = {}) {
+  const capsule = input.capsule?.schema_version ? input.capsule : composeProofCapsule(input);
+  const scenario = normalizeScenario(input.scenario || scenarioFromCapsule(capsule));
+  const endpoint = input.endpoint || "https://proof-capsule-mcp-demo.vercel.app/mcp";
+  const replay = replayWorkflowCapsule({ scenario, capsule });
+  const evidence = verifyEvidenceRefs({ scenario, capsule });
+  const diagnosis = diagnoseCapsule({ scenario, capsule });
+  const timeline = buildProofTimeline({ scenario, capsule });
+
+  return {
+    ok: true,
+    pack_id: `handoff:${shortHash(hashValue({ endpoint, capsule_id: capsule.capsule_id, replay: replay.hash_replay?.workflow_replay_hash }))}`,
+    endpoint,
+    capsule_id: capsule.capsule_id,
+    scenario,
+    status: diagnosis.healthy && replay.ok ? "ready" : "needs_attention",
+    next_allowed_actions: diagnosis.healthy
+      ? ["verify_proof_capsule", "replay_workflow_capsule", "plan_transition_queue", "operator_gated_sync_if_authorized"]
+      : diagnosis.recovery_actions.map((action) => action.action_id),
+    mcp_calls: [
+      { tool: "get_capsule_status", arguments: {} },
+      { tool: "verify_proof_capsule", arguments: { capsule } },
+      { tool: "replay_workflow_capsule", arguments: { scenario, capsule } },
+      { tool: "get_proof_timeline", arguments: { scenario, capsule } },
+      { tool: "diagnose_capsule", arguments: { scenario, capsule } },
+      { tool: "plan_transition_queue", arguments: { scenario, capsule } }
+    ],
+    resources: [
+      "capsule://manifest",
+      "capsule://schema",
+      "capsule://source-verifiers",
+      `capsule://workflow/${scenario}`
+    ],
+    replay_summary: {
+      ok: replay.ok,
+      workflow_id: replay.workflow_id,
+      workflow_replay_hash: replay.hash_replay?.workflow_replay_hash
+    },
+    evidence_summary: evidence.summary,
+    timeline_hash: timeline.timeline_hash,
+    write_boundary: WRITE_BOUNDARY,
+    caveats: [
+      "Do not send operator tokens to read-only tools.",
+      "Any DUAL write must use the operator-gated live tools/endpoints and then read back the DUAL object.",
+      "External source facts remain point-in-time unless a live adapter rechecks them."
+    ]
+  };
+}
+
 export function serviceDescriptor() {
   return {
     ok: true,
@@ -1593,7 +2102,15 @@ export function serviceDescriptor() {
       "list_workflow_templates",
       "get_workflow_definition",
       "replay_workflow_capsule",
-      "list_source_verifiers"
+      "list_source_verifiers",
+      "list_verifier_marketplace",
+      "verify_evidence_refs",
+      "build_workflow_draft",
+      "plan_transition_queue",
+      "diagnose_capsule",
+      "get_proof_timeline",
+      "compare_capsules",
+      "generate_agent_handoff_pack"
     ],
     resources: [
       "capsule://manifest",
@@ -1602,14 +2119,18 @@ export function serviceDescriptor() {
       "capsule://demo/tradeflow-medical-devices",
       "capsule://scorecard",
       "capsule://workflows",
-      "capsule://source-verifiers"
+      "capsule://source-verifiers",
+      "capsule://verifier-marketplace",
+      "capsule://operator-runbook"
     ],
     resourceTemplates: ["capsule://demo/{scenario}", "capsule://workflow/{scenario}"],
     prompts: [
       "proof_capsule_review",
       "mcp_client_handoff",
       "red_team_capsule_boundary",
-      "design_proof_capsule_workflow"
+      "design_proof_capsule_workflow",
+      "operate_capsule_transition",
+      "compare_capsule_versions"
     ],
     supported_capsule_types: CAPSULE_TYPES,
     supported_scenarios: SCENARIOS,
@@ -1621,13 +2142,14 @@ export function scorecard() {
   return {
     ok: true,
     score_target: 9.8,
-    score_claim: "draft_unreviewed",
-    scoring_note: "This v0.1 may only claim 9.8 after local proof scripts pass and Claude Cowork independently agrees.",
+    score_claim: "v0.4_draft_until_revalidated",
+    scoring_note: "The v0.4 functionality layer may only claim 9.8 after local/prod proof scripts pass and Claude Cowork independently agrees.",
     criteria: [
       { area: "MCP ergonomics", required: "Manifest, schema, resources, templates, prompts, read-only annotations, structured outputs." },
       { area: "Proof semantics", required: "Stable content hashes split from fresh envelope hashes; per-hash re-derivation." },
       { area: "Safety", required: "Public writes disabled; live DUAL writes only through operator-gated paths; no wallet actions or raw evidence storage." },
       { area: "Demo clarity", required: "Human UI shows capsule data, hashes, anchors, policy result, and verifier output." },
+      { area: "Operator workflow", required: "Workflow builder, evidence intake, transition queue, recovery, timeline, verifier marketplace, compare, and agent handoff work without public writes." },
       { area: "Red team", required: "Missing evidence, unsupported source, stale ownership, hash tamper, and live-write escalation are blocked." }
     ]
   };
@@ -1648,6 +2170,9 @@ export function handoff(endpoint = "http://127.0.0.1:4184/mcp") {
       "tools/call get_capsule_status",
       "tools/call compose_proof_capsule",
       "tools/call verify_proof_capsule",
+      "tools/call replay_workflow_capsule",
+      "tools/call get_proof_timeline",
+      "tools/call plan_transition_queue",
       "tools/call red_team_capsule"
     ],
     write_boundary: WRITE_BOUNDARY
@@ -1768,4 +2293,134 @@ function summarizeSourceVerifiers(capsule) {
       freshness_rule: verifier?.freshness_rule || "Register a verifier before relying on this source."
     };
   });
+}
+
+function normalizeEvidenceRef(ref = {}) {
+  const evidenceId = String(ref.evidence_id || ref.id || `${slugify(ref.type || "evidence").toUpperCase()}-REF`).trim();
+  const source = String(ref.source || "enterprise_vault").trim();
+  const type = String(ref.type || "document").trim();
+  const normalized = {
+    evidence_id: evidenceId,
+    type,
+    source,
+    hash: ref.hash || "",
+    summary: ref.summary || `${type} evidence from ${source}.`,
+    ref: ref.ref || `${source}://${slugify(evidenceId)}`,
+    explorer_url: ref.explorer_url || undefined,
+    point_in_time: ref.point_in_time || undefined,
+    freshness_status: ref.freshness_status || undefined,
+    stale: ref.stale === true || undefined
+  };
+  if (!normalized.hash) {
+    normalized.hash = hashValue({
+      evidence_id: normalized.evidence_id,
+      type: normalized.type,
+      source: normalized.source,
+      ref: normalized.ref,
+      summary: normalized.summary
+    });
+    normalized.hash_auto_derived = true;
+    normalized.hash_derivation = "auto_derived_from_ref_fields";
+  }
+  return Object.fromEntries(Object.entries(normalized).filter(([, value]) => value !== undefined));
+}
+
+function normalizeList(value, fallback = []) {
+  if (Array.isArray(value)) {
+    const list = value.map((item) => String(item || "").trim()).filter(Boolean);
+    return list.length ? list : fallback;
+  }
+  if (typeof value === "string") {
+    const list = value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean);
+    return list.length ? list : fallback;
+  }
+  return fallback;
+}
+
+function slugify(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    || "custom";
+}
+
+function findNextWorkflowTransition(workflow, options = {}) {
+  const transitions = workflow.transitions || [];
+  if (options.action) {
+    const byAction = transitions.find((transition) => transition.action === options.action);
+    if (byAction) return byAction;
+  }
+  if (options.currentState) {
+    const byState = transitions.find((transition) => transition.from_state === options.currentState);
+    if (byState) return byState;
+  }
+  return transitions[0] || null;
+}
+
+function buildRecoveryActions({ failures, evidence, replay, policy }) {
+  const actions = [];
+  const missingTypes = new Set(evidence.results.filter((item) => item.status === "missing").map((item) => item.type));
+  for (const type of missingTypes) {
+    actions.push({
+      action_id: `attach_${slugify(type)}_evidence`,
+      label: `Attach ${type} evidence`,
+      type: "attach_evidence",
+      target: type,
+      reason: "Required evidence is missing for the transition."
+    });
+  }
+  const staleRefs = evidence.results.filter((item) => item.status === "stale");
+  for (const ref of staleRefs) {
+    actions.push({
+      action_id: `recheck_${slugify(ref.source)}_${slugify(ref.type)}`,
+      label: `Recheck ${ref.source}`,
+      type: "recheck_source",
+      target: ref.evidence_id,
+      reason: ref.recheck_rule
+    });
+  }
+  const unsupported = evidence.results.filter((item) => item.status === "not_sufficient");
+  for (const ref of unsupported) {
+    actions.push({
+      action_id: `register_${slugify(ref.source || ref.type)}_verifier`,
+      label: `Register verifier for ${ref.source || ref.type}`,
+      type: "register_verifier",
+      target: ref.source,
+      reason: "The source has no verifier contract."
+    });
+  }
+  if (replay.replay_steps.some((item) => !item.pass && item.name.includes("transition"))) {
+    actions.push({
+      action_id: "fix_state_transition",
+      label: "Fix state transition",
+      type: "edit_transition",
+      target: replay.workflow_id,
+      reason: "Capsule state transition does not match the workflow definition."
+    });
+  }
+  if (policy.result === "Blocked") {
+    actions.push({
+      action_id: "policy_review",
+      label: "Review policy result",
+      type: "review_policy",
+      target: policy.code,
+      reason: policy.reason
+    });
+  }
+  if (!actions.length) {
+    actions.push({
+      action_id: "operator_gated_sync",
+      label: "Operator-gated DUAL sync",
+      type: "sync",
+      target: "/api/capsules/sync",
+      reason: "No blocking recovery action remains."
+    });
+  }
+  return actions;
+}
+
+function diffField(field, left, right) {
+  return left === right ? null : { field, left: left ?? null, right: right ?? null };
 }

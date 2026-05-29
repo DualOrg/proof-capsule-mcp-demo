@@ -4,12 +4,20 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
+  buildProofTimeline,
+  buildWorkflowDraft,
+  compareCapsules,
   composeProofCapsule,
+  diagnoseCapsule,
   evaluateCapsulePolicy,
+  generateAgentHandoffPack,
   getWorkflowDefinition,
+  listVerifierMarketplace,
   listSourceVerifiers,
+  planTransitionQueue,
   redTeamCapsule,
   replayWorkflowCapsule,
+  verifyEvidenceRefs,
   verifyProofCapsule
 } from "./src/capsule-core.mjs";
 import {
@@ -122,6 +130,18 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, verifyProofCapsule(await readBody(req)));
   }
 
+  if (req.method === "POST" && url.pathname === "/api/capsule/diagnose") {
+    return sendJson(res, 200, diagnoseCapsule(await readBody(req)));
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/capsule/timeline") {
+    return sendJson(res, 200, buildProofTimeline(await readBody(req)));
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/capsule/compare") {
+    return sendJson(res, 200, compareCapsules(await readBody(req)));
+  }
+
   if (req.method === "POST" && url.pathname === "/api/capsule/evaluate") {
     return sendJson(res, 200, evaluateCapsulePolicy(await readBody(req)));
   }
@@ -134,12 +154,34 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, getWorkflowDefinition({ scenario: url.searchParams.get("scenario") || undefined }));
   }
 
+  if (req.method === "POST" && url.pathname === "/api/workflow/build") {
+    return sendJson(res, 200, buildWorkflowDraft(await readBody(req)));
+  }
+
   if (req.method === "POST" && url.pathname === "/api/workflow/replay") {
     return sendJson(res, 200, replayWorkflowCapsule(await readBody(req)));
   }
 
+  if (req.method === "POST" && url.pathname === "/api/evidence/verify") {
+    return sendJson(res, 200, verifyEvidenceRefs(await readBody(req)));
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/transition/plan") {
+    return sendJson(res, 200, planTransitionQueue(await readBody(req)));
+  }
+
   if (req.method === "GET" && url.pathname === "/api/source/verifiers") {
     return sendJson(res, 200, listSourceVerifiers());
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/source/marketplace") {
+    return sendJson(res, 200, listVerifierMarketplace({
+      sources: (url.searchParams.get("sources") || "").split(",").map((source) => source.trim()).filter(Boolean)
+    }));
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/agent/handoff") {
+    return sendJson(res, 200, generateAgentHandoffPack(await readBody(req)));
   }
 
   if (req.method === "POST" && url.pathname === "/api/capsules/sync") {

@@ -7,17 +7,25 @@ import {
   SERVICE_NAME,
   SERVICE_VERSION,
   WRITE_BOUNDARY,
+  buildProofTimeline,
+  buildWorkflowDraft,
   capsuleToMarkdown,
+  compareCapsules,
   composeProofCapsule,
   defaultPolicy,
+  diagnoseCapsule,
   evaluateCapsulePolicy,
+  generateAgentHandoffPack,
   getWorkflowDefinition,
   handoff,
+  listVerifierMarketplace,
   listSourceVerifiers,
   listWorkflowTemplates,
+  planTransitionQueue,
   redTeamCapsule,
   replayWorkflowCapsule,
   scorecard,
+  verifyEvidenceRefs,
   verifyProofCapsule
 } from "./capsule-core.mjs";
 import {
@@ -240,6 +248,48 @@ export function createMcpServer() {
       mimeType: "application/json"
     },
     async (uri) => ({ contents: [{ uri: uri.href, text: JSON.stringify(listSourceVerifiers(), null, 2) }] })
+  );
+
+  server.registerResource(
+    "verifier-marketplace",
+    "capsule://verifier-marketplace",
+    {
+      title: "Proof Capsule Verifier Marketplace",
+      description: "Selectable verifier modules for source facts such as Solana, DUAL, IPFS, vaults, telemetry, registries, and payment mirrors.",
+      mimeType: "application/json"
+    },
+    async (uri) => ({ contents: [{ uri: uri.href, text: JSON.stringify(listVerifierMarketplace(), null, 2) }] })
+  );
+
+  server.registerResource(
+    "operator-runbook",
+    "capsule://operator-runbook",
+    {
+      title: "Proof Capsule Operator Runbook",
+      description: "Read-only runbook for evidence intake, transition dry-run, recovery, timeline review, and operator-gated DUAL sync.",
+      mimeType: "application/json"
+    },
+    async (uri) => ({
+      contents: [{
+        uri: uri.href,
+        text: JSON.stringify({
+          ok: true,
+          sequence: [
+            "compose_proof_capsule",
+            "verify_evidence_refs",
+            "replay_workflow_capsule",
+            "diagnose_capsule",
+            "plan_transition_queue",
+            "sync_proof_capsule_live only when an authorised operator supplies the token",
+            "get_current_live_capsule",
+            "get_proof_timeline"
+          ],
+          public_writes: false,
+          operator_gate: "required for live DUAL writes",
+          secret_policy: "Never put operator tokens in read-only tool calls or shared handoff packs."
+        }, null, 2)
+      }]
+    })
   );
 
   server.registerResource(
@@ -532,6 +582,152 @@ export function createMcpServer() {
   );
 
   server.registerTool(
+    "list_verifier_marketplace",
+    {
+      title: "List Verifier Marketplace",
+      description: "List selectable verifier modules and their source-fact boundaries for workflow design and evidence intake.",
+      inputSchema: {
+        sources: z.array(z.string()).optional(),
+        selected_sources: z.array(z.string()).optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(listVerifierMarketplace(input))
+  );
+
+  server.registerTool(
+    "verify_evidence_refs",
+    {
+      title: "Verify Evidence References",
+      description: "Normalize and check evidence refs against required workflow evidence and source verifier contracts.",
+      inputSchema: {
+        scenario: scenarioSchema.optional(),
+        capsule: z.record(z.string(), z.unknown()).optional(),
+        evidence_refs: z.array(z.record(z.string(), z.unknown())).optional(),
+        required_evidence: z.array(z.string()).optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(verifyEvidenceRefs(input))
+  );
+
+  server.registerTool(
+    "build_workflow_draft",
+    {
+      title: "Build Workflow Draft",
+      description: "Generate a reusable Proof Capsule workflow draft, policy, evidence refs, and draft capsule from operator-supplied process fields.",
+      inputSchema: {
+        title: z.string().optional(),
+        workflow_title: z.string().optional(),
+        subject_type: z.string().optional(),
+        subject_id: z.string().optional(),
+        subject_label: z.string().optional(),
+        states: z.union([z.array(z.string()), z.string()]).optional(),
+        evidence_types: z.union([z.array(z.string()), z.string()]).optional(),
+        required_evidence: z.union([z.array(z.string()), z.string()]).optional(),
+        sources: z.union([z.array(z.string()), z.string()]).optional(),
+        selected_sources: z.union([z.array(z.string()), z.string()]).optional(),
+        policy_gate: z.string().optional(),
+        action: z.string().optional(),
+        actor: z.string().optional(),
+        value_usd: z.number().optional(),
+        max_value_usd: z.number().optional(),
+        human_review_threshold_usd: z.number().optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(buildWorkflowDraft(input))
+  );
+
+  server.registerTool(
+    "plan_transition_queue",
+    {
+      title: "Plan Transition Queue",
+      description: "Dry-run the next workflow transition and return the operator-gated DUAL sync payload without executing it.",
+      inputSchema: {
+        scenario: scenarioSchema.optional(),
+        capsule: z.record(z.string(), z.unknown()).optional(),
+        evidence_refs: z.array(z.record(z.string(), z.unknown())).optional(),
+        action: z.string().optional(),
+        transition_action: z.string().optional(),
+        actor: z.string().optional(),
+        from_state: z.string().optional(),
+        dry_run: z.boolean().optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(planTransitionQueue(input))
+  );
+
+  server.registerTool(
+    "diagnose_capsule",
+    {
+      title: "Diagnose Capsule",
+      description: "Return failure and recovery actions for evidence, policy, workflow replay, and transition issues.",
+      inputSchema: {
+        scenario: scenarioSchema.optional(),
+        capsule: z.record(z.string(), z.unknown()).optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(diagnoseCapsule(input))
+  );
+
+  server.registerTool(
+    "get_proof_timeline",
+    {
+      title: "Get Proof Timeline",
+      description: "Return a lifecycle timeline with state, evidence, decision, hash, and DUAL link context.",
+      inputSchema: {
+        scenario: scenarioSchema.optional(),
+        capsule: z.record(z.string(), z.unknown()).optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(buildProofTimeline(input))
+  );
+
+  server.registerTool(
+    "compare_capsules",
+    {
+      title: "Compare Capsules",
+      description: "Compare two capsules or scenario versions and show evidence, state, policy, decision, and hash changes.",
+      inputSchema: {
+        scenario: scenarioSchema.optional(),
+        left_scenario: scenarioSchema.optional(),
+        right_scenario: scenarioSchema.optional(),
+        left: z.record(z.string(), z.unknown()).optional(),
+        right: z.record(z.string(), z.unknown()).optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(compareCapsules(input))
+  );
+
+  server.registerTool(
+    "generate_agent_handoff_pack",
+    {
+      title: "Generate Agent Handoff Pack",
+      description: "Produce an MCP handoff pack with calls, resources, next allowed actions, replay status, and write-boundary caveats.",
+      inputSchema: {
+        scenario: scenarioSchema.optional(),
+        capsule: z.record(z.string(), z.unknown()).optional(),
+        endpoint: z.string().optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(generateAgentHandoffPack(input))
+  );
+
+  server.registerTool(
     "sync_proof_capsule_live",
     {
       title: "Sync Proof Capsule Live",
@@ -628,6 +824,40 @@ export function createMcpServer() {
       `Design a DUAL Proof Capsule workflow for: ${workflow || "the supplied process"}.`,
       "Return: subject, states, allowed transitions, required evidence per transition, source verifier contracts, freshness rules, DUAL template fields, event-bus actions, readback checks, and public/operator write boundary.",
       "Treat external facts as point-in-time and DUAL as the governed proof/state layer."
+    ].join("\n"))
+  );
+
+  server.registerPrompt(
+    "operate_capsule_transition",
+    {
+      title: "Operate Capsule Transition",
+      description: "Guide an agent through evidence intake, dry-run, recovery, and operator-gated sync for one transition.",
+      argsSchema: {
+        scenario: z.string().optional(),
+        transition: z.string().optional()
+      }
+    },
+    ({ scenario, transition }) => textPrompt([
+      `Operate transition ${transition || "next"} for ${scenario || "the supplied Proof Capsule"}.`,
+      "Call verify_evidence_refs, replay_workflow_capsule, diagnose_capsule, and plan_transition_queue before any write.",
+      "Only call sync_proof_capsule_live if an authorised operator explicitly supplies the token; never put tokens in read-only calls."
+    ].join("\n"))
+  );
+
+  server.registerPrompt(
+    "compare_capsule_versions",
+    {
+      title: "Compare Capsule Versions",
+      description: "Guide an agent through comparing two Proof Capsule versions and explaining decision/hash changes.",
+      argsSchema: {
+        left: z.string().optional(),
+        right: z.string().optional()
+      }
+    },
+    ({ left, right }) => textPrompt([
+      `Compare Proof Capsule versions ${left || "left"} and ${right || "right"}.`,
+      "Use compare_capsules, then explain evidence changes, state transition changes, policy/decision changes, and which hashes changed.",
+      "If a change requires live source recheck or operator-gated DUAL sync, call that out explicitly."
     ].join("\n"))
   );
 

@@ -13,19 +13,27 @@ await client.connect(transport);
 const tools = await client.listTools();
 const toolNames = tools.tools.map((tool) => tool.name).sort();
 for (const required of [
+  "build_workflow_draft",
   "compose_proof_capsule",
+  "compare_capsules",
+  "diagnose_capsule",
   "evaluate_capsule_policy",
+  "generate_agent_handoff_pack",
   "get_current_live_capsule",
   "get_capsule_handoff",
   "get_capsule_status",
+  "get_proof_timeline",
   "get_live_dual_status",
   "get_workflow_definition",
+  "list_verifier_marketplace",
   "list_source_verifiers",
   "list_workflow_templates",
   "mint_proof_capsule_live",
+  "plan_transition_queue",
   "red_team_capsule",
   "replay_workflow_capsule",
   "sync_proof_capsule_live",
+  "verify_evidence_refs",
   "verify_proof_capsule"
 ]) {
   if (!toolNames.includes(required)) throw new Error(`Missing tool: ${required}`);
@@ -54,6 +62,8 @@ for (const required of [
   "capsule://schema",
   "capsule://scorecard",
   "capsule://source-verifiers",
+  "capsule://verifier-marketplace",
+  "capsule://operator-runbook",
   "capsule://workflows"
 ]) {
   if (!resourceUris.includes(required)) throw new Error(`Missing resource: ${required}`);
@@ -69,7 +79,7 @@ if (!templates.resourceTemplates.some((template) => template.uriTemplate === "ca
 
 const prompts = await client.listPrompts();
 const promptNames = prompts.prompts.map((prompt) => prompt.name);
-for (const required of ["proof_capsule_review", "mcp_client_handoff", "red_team_capsule_boundary", "design_proof_capsule_workflow"]) {
+for (const required of ["proof_capsule_review", "mcp_client_handoff", "red_team_capsule_boundary", "design_proof_capsule_workflow", "operate_capsule_transition", "compare_capsule_versions"]) {
   if (!promptNames.includes(required)) throw new Error(`Missing prompt: ${required}`);
 }
 
@@ -123,12 +133,89 @@ if (!replay.structuredContent?.ok || !replay.structuredContent?.hash_replay?.wor
   throw new Error("Workflow replay did not verify the capsule.");
 }
 
+const evidence = await client.callTool({
+  name: "verify_evidence_refs",
+  arguments: { scenario: "tradeflow_medical_devices", capsule }
+});
+if (!evidence.structuredContent?.ok || evidence.structuredContent?.summary?.verified < capsule.evidence_refs.length) {
+  throw new Error("Evidence intake verification did not pass.");
+}
+
+const timeline = await client.callTool({
+  name: "get_proof_timeline",
+  arguments: { scenario: "tradeflow_medical_devices", capsule }
+});
+if (!timeline.structuredContent?.timeline_hash || !timeline.structuredContent?.events?.length) {
+  throw new Error("Proof timeline did not render lifecycle events.");
+}
+
+const transition = await client.callTool({
+  name: "plan_transition_queue",
+  arguments: { scenario: "tradeflow_medical_devices", capsule }
+});
+if (!transition.structuredContent?.queue_id || !transition.structuredContent?.write_operation?.requires_operator_token) {
+  throw new Error("Transition queue did not produce an operator-gated sync payload.");
+}
+
+const diagnosis = await client.callTool({
+  name: "diagnose_capsule",
+  arguments: { scenario: "tradeflow_medical_devices", capsule }
+});
+if (!diagnosis.structuredContent?.healthy) {
+  throw new Error("Default capsule diagnosis unexpectedly found blockers.");
+}
+
 const verifiers = await client.callTool({
   name: "list_source_verifiers",
   arguments: {}
 });
 if ((verifiers.structuredContent?.verifier_count || 0) < 10) {
   throw new Error("Source verifier registry is too thin.");
+}
+
+const marketplace = await client.callTool({
+  name: "list_verifier_marketplace",
+  arguments: {}
+});
+if ((marketplace.structuredContent?.module_count || 0) < verifiers.structuredContent.verifier_count) {
+  throw new Error("Verifier marketplace is incomplete.");
+}
+
+const draft = await client.callTool({
+  name: "build_workflow_draft",
+  arguments: {
+    title: "Supplier onboarding approval",
+    subject_type: "supplier_record",
+    states: "Requested, Evidence ready, Approved, Closed",
+    evidence_types: "identity, compliance, mandate, settlement",
+    sources: "enterprise_vault, counterparty_registry, dual, payment_preview",
+    value_usd: 25000
+  }
+});
+if (!draft.structuredContent?.draft_hash || !draft.structuredContent?.capsule?.hashes?.capsule_content_hash) {
+  throw new Error("Workflow builder draft is incomplete.");
+}
+
+const comparison = await client.callTool({
+  name: "compare_capsules",
+  arguments: {
+    left: capsule,
+    right: {
+      ...capsule,
+      evidence_refs: capsule.evidence_refs.slice(0, 6)
+    }
+  }
+});
+if (comparison.structuredContent?.same_content || !comparison.structuredContent?.changed_hashes?.length) {
+  throw new Error("Capsule compare did not detect evidence/hash changes.");
+}
+
+const handoff = await client.callTool({
+  name: "generate_agent_handoff_pack",
+  arguments: { scenario: "tradeflow_medical_devices", capsule, endpoint: url }
+});
+if (!handoff.structuredContent?.mcp_calls?.some((call) => call.tool === "plan_transition_queue")) {
+  throw new Error("Agent handoff pack is incomplete.");
 }
 
 const scenarioCapsules = [];
@@ -177,7 +264,14 @@ console.log(JSON.stringify({
   policyResult: evaluation.structuredContent.result,
   workflowId: workflow.structuredContent.workflow_id,
   workflowReplayHash: replay.structuredContent.hash_replay.workflow_replay_hash,
+  evidenceVerified: evidence.structuredContent.summary.verified,
+  timelineHash: timeline.structuredContent.timeline_hash,
+  transitionQueueId: transition.structuredContent.queue_id,
   sourceVerifierCount: verifiers.structuredContent.verifier_count,
+  marketplaceModuleCount: marketplace.structuredContent.module_count,
+  workflowDraftHash: draft.structuredContent.draft_hash,
+  compareHash: comparison.structuredContent.compare_hash,
+  handoffPackId: handoff.structuredContent.pack_id,
   scenarioCoverage: scenarioCapsules,
   liveWriteBlocked: redTeam.structuredContent.blocked
 }, null, 2));

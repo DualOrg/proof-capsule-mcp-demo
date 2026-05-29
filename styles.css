@@ -163,6 +163,11 @@ body {
   margin-bottom: 14px;
 }
 
+.compact-title {
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
 .panel-title strong {
   text-align: right;
   overflow-wrap: anywhere;
@@ -224,6 +229,12 @@ button:hover {
   border-top: 1px solid var(--line);
 }
 
+.control-group {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
 .live-write button {
   background: #18323a;
 }
@@ -268,7 +279,7 @@ code {
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 10px;
   margin-bottom: 18px;
 }
@@ -416,6 +427,111 @@ h3 {
   margin-top: 18px;
 }
 
+.operations-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.operations-grid section {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfdfd;
+  padding: 12px;
+  min-width: 0;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.button-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.button-row button {
+  margin-top: 0;
+}
+
+.timeline-stack,
+.marketplace-stack {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.timeline-row,
+.module-row {
+  border: 1px solid var(--line);
+  background: #f8fbfb;
+  border-radius: 6px;
+  padding: 10px;
+  min-width: 0;
+}
+
+.timeline-row.current,
+.workflow-row.verified {
+  border-color: #badfc9;
+  background: var(--mint);
+}
+
+.timeline-row.previous,
+.timeline-row.completed {
+  border-color: #cce7d6;
+  background: #f0fbf5;
+}
+
+.timeline-row.stale,
+.workflow-row.stale,
+.workflow-row.missing,
+.workflow-row.not_sufficient {
+  border-color: #f1ce7a;
+  background: var(--amber);
+}
+
+.module-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px;
+  gap: 8px;
+  align-items: center;
+}
+
+.module-row button {
+  min-height: 32px;
+  margin: 0;
+  padding: 0 8px;
+}
+
+.timeline-row span,
+.module-row span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.timeline-row strong,
+.module-row strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.timeline-row p,
+.module-row p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 pre {
   max-height: 440px;
   overflow: auto;
@@ -437,7 +553,8 @@ pre {
   .metric-grid,
   .bands,
   .evidence-list,
-  .workflow-grid {
+  .workflow-grid,
+  .operations-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -447,6 +564,7 @@ pre {
     align-items: flex-start;
     flex-direction: column;
     padding: 12px;
+    position: static;
   }
 
   .shell {
@@ -462,7 +580,10 @@ pre {
   .metric-grid,
   .bands,
   .evidence-list,
-  .workflow-grid {
+  .workflow-grid,
+  .operations-grid,
+  .form-grid,
+  .button-row {
     grid-template-columns: 1fr;
   }
 

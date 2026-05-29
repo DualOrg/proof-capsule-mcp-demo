@@ -3,6 +3,7 @@ import {
   composeProofCapsule,
   defaultWriteBoundary,
   hashValue,
+  SERVICE_VERSION,
   serviceDescriptor,
   verifyProofCapsule
 } from "./capsule-core.mjs";
@@ -440,7 +441,7 @@ export function liveServiceDescriptor() {
   const descriptor = serviceDescriptor();
   return {
     ...descriptor,
-    version: "0.3.0",
+    version: SERVICE_VERSION,
     mode: status.mode,
     writeBoundary: status.detail,
     liveDualWrites: status.liveDualWrites,

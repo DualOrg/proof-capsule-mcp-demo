@@ -4,7 +4,7 @@ Proof Capsule is the use-case-agnostic DUAL primitive behind TradeFlow-style pro
 
 This sandbox exposes that primitive through a Streamable HTTP MCP endpoint and a small UI. In production it can read from a live DUAL object and execute operator-gated event-bus mint/sync writes.
 
-The v0.3 model adds the piece that makes the concept reusable rather than just vertical-demo shaped: each capsule can be replayed through a DUAL workflow definition. A workflow definition describes the DUAL template/object contract, allowed states, event-bus transitions, required evidence per transition, source verifier contracts, freshness rules, and readback checks.
+The v0.4 model adds the operator workflow layer on top of replay: workflow builder, evidence intake checks, transition dry-runs, recovery actions, lifecycle timeline, verifier modules, capsule compare, and agent handoff packs. Live writes remain operator-gated.
 
 ## Scope
 
@@ -84,6 +84,14 @@ Tools:
 - `get_workflow_definition`
 - `replay_workflow_capsule`
 - `list_source_verifiers`
+- `list_verifier_marketplace`
+- `verify_evidence_refs`
+- `build_workflow_draft`
+- `plan_transition_queue`
+- `diagnose_capsule`
+- `get_proof_timeline`
+- `compare_capsules`
+- `generate_agent_handoff_pack`
 - `sync_proof_capsule_live`
 - `mint_proof_capsule_live`
 
@@ -98,6 +106,8 @@ Resources:
 - `capsule://dual/current`
 - `capsule://workflows`
 - `capsule://source-verifiers`
+- `capsule://verifier-marketplace`
+- `capsule://operator-runbook`
 
 Resource template:
 
@@ -111,6 +121,8 @@ Prompts:
 - `mcp_client_handoff`
 - `red_team_capsule_boundary`
 - `design_proof_capsule_workflow`
+- `operate_capsule_transition`
+- `compare_capsule_versions`
 
 ## Workflow Model
 
@@ -135,6 +147,21 @@ Each scenario now exposes a workflow definition with:
 - DUAL build contract: one object per workflow instance, event-bus writes, operator gate, public writes off, readback after write.
 
 `replay_workflow_capsule` proves the capsule is not just a hash bundle. It checks that the declared state transition is allowed by the workflow, required evidence exists, all evidence sources have verifier contracts, policy did not block the transition, hashes re-derive, and the write boundary remains operator-gated.
+
+## Operator Workflow Layer
+
+The app is now usable as a small operating console, not only a verifier:
+
+- **Workflow builder:** creates a draft workflow definition and draft capsule from states, evidence types, sources, and value.
+- **Evidence intake:** accepts source refs, derives hashes when a caller does not provide one, checks required evidence categories, and labels refs as verified, stale, missing, or not sufficient.
+- **Transition queue:** dry-runs the next state transition and returns the exact operator-gated sync payload without executing it.
+- **Recovery:** diagnoses missing evidence, unsupported sources, policy blocks, stale refs, and workflow-state mismatches with concrete recovery actions.
+- **Proof timeline:** renders the lifecycle state trail with state, evidence, decision, hash, and DUAL link context.
+- **Verifier marketplace:** exposes source verifier modules for Solana, DUAL, IPFS, telemetry, customs, insurance, escrow, policy/admin systems, enterprise vaults, signed tool logs, registries, luxury/custody sources, and carbon registries.
+- **Capsule compare:** compares two capsule versions and shows evidence, state, decision, policy, and hash changes.
+- **Agent handoff:** packages MCP calls, resources, next allowed actions, replay status, timeline hash, and write-boundary caveats for another agent.
+
+All of these are public read/dry-run operations. The only state-changing paths remain `sync_proof_capsule_live`, `mint_proof_capsule_live`, `POST /api/capsules/sync`, and `POST /api/capsules/mint`, and those still require the operator token.
 
 ## Proof Semantics
 
@@ -183,6 +210,17 @@ The app is Vercel-ready. Public endpoints:
 - `POST /api/capsule/verify`
 - `POST /api/capsule/evaluate`
 - `POST /api/capsule/red-team`
+- `POST /api/capsule/diagnose`
+- `POST /api/capsule/timeline`
+- `POST /api/capsule/compare`
+- `GET /api/workflow/definition?scenario=...`
+- `POST /api/workflow/build`
+- `POST /api/workflow/replay`
+- `POST /api/evidence/verify`
+- `POST /api/transition/plan`
+- `GET /api/source/verifiers`
+- `GET /api/source/marketplace`
+- `POST /api/agent/handoff`
 - `GET|POST /mcp`
 
 Operator-gated endpoints:

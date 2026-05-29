@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Proof Capsule Studio</title>
-    <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="./styles.css?v=0.4.0">
   </head>
   <body>
     <header class="topbar">
@@ -50,6 +50,25 @@
           <button id="composeBtn" type="button">Compose capsule</button>
           <button id="verifyBtn" type="button">Verify hashes</button>
           <button id="redTeamBtn" type="button">Run red-team</button>
+          <div class="control-group">
+            <div class="panel-title compact-title">
+              <span>Workflow builder</span>
+              <strong>Draft</strong>
+            </div>
+            <label for="workflowTitle">Workflow title</label>
+            <input id="workflowTitle" type="text" value="Supplier onboarding approval">
+            <label for="workflowSubjectType">Subject type</label>
+            <input id="workflowSubjectType" type="text" value="supplier_record">
+            <label for="workflowStates">States</label>
+            <input id="workflowStates" type="text" value="Requested, Evidence ready, Approved, Closed">
+            <label for="workflowEvidenceTypes">Evidence types</label>
+            <input id="workflowEvidenceTypes" type="text" value="identity, compliance, mandate, settlement">
+            <label for="workflowSources">Sources</label>
+            <input id="workflowSources" type="text" value="enterprise_vault, counterparty_registry, dual, payment_preview">
+            <label for="workflowValue">Value USD</label>
+            <input id="workflowValue" type="number" value="25000">
+            <button id="buildWorkflowBtn" type="button">Build workflow</button>
+          </div>
           <div class="live-write">
             <label for="operatorToken">Operator token</label>
             <input id="operatorToken" type="password" autocomplete="off" placeholder="Required for DUAL writes">
@@ -84,6 +103,10 @@
               <span>Evidence refs</span>
               <strong id="evidenceCount">-</strong>
             </div>
+            <div>
+              <span>Transition</span>
+              <strong id="statePair">-</strong>
+            </div>
           </div>
           <div class="bands" aria-label="Provenance bands">
             <div>
@@ -111,6 +134,84 @@
               <div id="sourceVerifierStack" class="workflow-stack"></div>
             </div>
           </div>
+          <div class="operations-grid">
+            <section>
+              <div class="panel-title compact-title">
+                <span>Evidence intake</span>
+                <strong id="evidenceStatus">Pending</strong>
+              </div>
+              <div class="form-grid">
+                <div>
+                  <label for="evidenceType">Type</label>
+                  <input id="evidenceType" type="text" value="approval">
+                </div>
+                <div>
+                  <label for="evidenceSource">Source</label>
+                  <select id="evidenceSource">
+                    <option value="enterprise_vault">Enterprise vault</option>
+                    <option value="dual">DUAL readback</option>
+                    <option value="solana">Solana</option>
+                    <option value="ipfs">IPFS</option>
+                    <option value="signed_iot_feed">Signed telemetry</option>
+                    <option value="counterparty_registry">Counterparty registry</option>
+                    <option value="payment_preview">Payment preview</option>
+                    <option value="carbon_registry">Carbon registry</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="evidenceId">Evidence ID</label>
+                  <input id="evidenceId" type="text" placeholder="Optional">
+                </div>
+                <div>
+                  <label for="evidenceFreshness">Freshness</label>
+                  <select id="evidenceFreshness">
+                    <option value="verified">Verified</option>
+                    <option value="stale">Stale</option>
+                  </select>
+                </div>
+              </div>
+              <label for="evidenceRef">Reference</label>
+              <input id="evidenceRef" type="text" placeholder="source://reference">
+              <label for="evidenceSummary">Summary</label>
+              <input id="evidenceSummary" type="text" placeholder="Short evidence summary">
+              <div class="button-row">
+                <button id="attachEvidenceBtn" type="button">Attach</button>
+                <button id="verifyEvidenceBtn" type="button">Verify evidence</button>
+              </div>
+              <div id="evidenceVerifierStack" class="workflow-stack"></div>
+            </section>
+            <section>
+              <div class="panel-title compact-title">
+                <span>Transition queue</span>
+                <strong id="transitionStatus">Pending</strong>
+              </div>
+              <label for="transitionAction">Action override</label>
+              <input id="transitionAction" type="text" placeholder="Optional workflow action">
+              <div class="button-row">
+                <button id="planTransitionBtn" type="button">Dry-run</button>
+                <button id="applyTransitionBtn" type="button">Apply local</button>
+                <button id="syncTransitionBtn" type="button">Sync queued</button>
+              </div>
+              <div id="transitionStack" class="hash-stack"></div>
+            </section>
+          </div>
+          <div class="operations-grid">
+            <section>
+              <div class="panel-title compact-title">
+                <span>Recovery</span>
+                <strong id="diagnosisStatus">Pending</strong>
+              </div>
+              <button id="diagnoseBtn" type="button">Diagnose</button>
+              <div id="recoveryStack" class="workflow-stack"></div>
+            </section>
+            <section>
+              <div class="panel-title compact-title">
+                <span>Verifier modules</span>
+                <strong>Marketplace</strong>
+              </div>
+              <div id="marketplaceStack" class="marketplace-stack"></div>
+            </section>
+          </div>
         </section>
 
         <aside class="panel proof">
@@ -123,6 +224,26 @@
             <span>Workflow replay</span>
             <strong id="replayStatus">Pending</strong>
           </div>
+          <div class="panel-title compact-title">
+            <span>Proof timeline</span>
+            <strong>Lifecycle</strong>
+          </div>
+          <div id="timelineStack" class="timeline-stack"></div>
+          <div class="panel-title compact-title">
+            <span>Capsule compare</span>
+            <strong id="compareStatus">Unset</strong>
+          </div>
+          <div class="button-row">
+            <button id="setCompareBaseBtn" type="button">Set base</button>
+            <button id="compareCurrentBtn" type="button">Compare</button>
+          </div>
+          <div id="compareStack" class="hash-stack"></div>
+          <div class="panel-title compact-title">
+            <span>Agent handoff</span>
+            <strong id="handoffStatus">Pending</strong>
+          </div>
+          <button id="handoffBtn" type="button">Generate pack</button>
+          <div id="handoffStack" class="hash-stack"></div>
           <div class="hash-stack" id="hashStack"></div>
           <div class="link-stack" id="linkStack"></div>
         </aside>
@@ -137,6 +258,6 @@
       </section>
     </main>
 
-    <script type="module" src="./client.js"></script>
+    <script type="module" src="./client.js?v=0.4.0"></script>
   </body>
 </html>
