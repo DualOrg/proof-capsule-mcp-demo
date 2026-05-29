@@ -266,7 +266,7 @@ const WORKFLOW_DEFINITIONS = {
     title: "Tokenized carbon credit retirement lifecycle",
     subject_type: "carbon_credit",
     dual_template: "io.dual.proof_capsule.lifecycle.v1",
-    states: ["Issued", "MRV verified", "Reserved", "Retirement prepared", "Retired"],
+    states: ["Issued", "MRV verified", "Offset review pending", "Retirement prepared", "Retired"],
     current_transition: "verify_offset_capsule",
     transitions: [
       { action: "verify_offset_capsule", from_state: "Offset review pending", to_state: "Retirement prepared", required_evidence: ["issuance", "mrv", "verification", "ownership", "retirement", "mandate"], policy_gate: "issuance, MRV, holder, and retirement preview complete" },
@@ -512,8 +512,8 @@ export function demoCapsuleInput(scenario = "tradeflow_medical_devices") {
     state_transition: {
       action: "verify_gate",
       actor: "buyer-agent.procurement.au",
-      from_state: "Milestone pending",
-      to_state: "Milestone verified",
+      from_state: "Cargo loaded",
+      to_state: "Customs cleared",
       from_gate: "Cargo loaded",
       to_gate: "Customs cleared",
       occurred_at: GENERATED_AT
@@ -1488,6 +1488,13 @@ export function replayWorkflowCapsule(input = {}) {
   const scenario = normalizeScenario(input.scenario || scenarioFromCapsule(capsule));
   const workflow = getWorkflowDefinition({ scenario });
   const transition = findWorkflowTransition(workflow, capsule.state_transition);
+  const workflowStates = new Set(workflow.states || []);
+  const stateTransition = capsule.state_transition || {};
+  const fromStateKnown = !stateTransition.from_state || workflowStates.has(stateTransition.from_state);
+  const toStateKnown = !stateTransition.to_state || workflowStates.has(stateTransition.to_state);
+  const transitionStateMatches = Boolean(transition)
+    && transition.from_state === stateTransition.from_state
+    && transition.to_state === stateTransition.to_state;
   const requiredEvidence = transition?.required_evidence || capsule.policy?.required_anchor_types || [];
   const evidenceTypes = new Set((capsule.evidence_refs || []).map((ref) => ref.type));
   const missingEvidence = requiredEvidence.filter((type) => !evidenceTypes.has(type));
@@ -1508,6 +1515,8 @@ export function replayWorkflowCapsule(input = {}) {
   const replaySteps = [
     step("read_workflow_definition", workflow.ok, workflow.workflow_id),
     step("match_state_transition", Boolean(transition), transition?.action || "no matching transition"),
+    step("check_transition_states_declared", fromStateKnown && toStateKnown, fromStateKnown && toStateKnown ? "from_state and to_state are declared workflow states" : `unknown state ${[fromStateKnown ? null : stateTransition.from_state, toStateKnown ? null : stateTransition.to_state].filter(Boolean).join(", ")}`),
+    step("check_transition_state_match", transitionStateMatches, transitionStateMatches ? "capsule state transition matches workflow transition states" : "capsule state transition drifted from workflow transition"),
     step("check_required_evidence", missingEvidence.length === 0, missingEvidence.length ? `missing ${missingEvidence.join(", ")}` : "all required evidence present"),
     step("check_source_verifiers", unsupportedSources.length === 0, unsupportedSources.length ? `unsupported ${unsupportedSources.map((item) => item.source).join(", ")}` : "all sources registered"),
     step("evaluate_policy", policy.result !== "Blocked", `${policy.result} / ${policy.code}`),
@@ -1723,6 +1732,7 @@ function timelineForWorkflow(workflow, stateTransition = {}) {
   const toState = stateTransition.to_state;
   const fromState = stateTransition.from_state;
   const toGate = stateTransition.to_gate;
+  const targetIndex = (workflow.states || []).findIndex((item) => item === toState || item === toGate);
   return (workflow.states || []).map((state, index) => {
     const isCurrent = state === toState || state === toGate;
     const wasPrevious = state === fromState || state === stateTransition.from_gate;
@@ -1733,7 +1743,7 @@ function timelineForWorkflow(workflow, stateTransition = {}) {
         ? "current"
         : wasPrevious
           ? "previous"
-          : index < (workflow.states || []).findIndex((item) => item === toState || item === toGate)
+          : targetIndex >= 0 && index < targetIndex
             ? "completed"
             : "pending"
     };

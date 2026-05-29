@@ -50,6 +50,14 @@ function runScenario(scenario) {
     throw new Error(`${scenario} workflow definition is incomplete.`);
   }
 
+  const workflowStates = new Set(workflow.states || []);
+  const transitionWithUnknownState = (workflow.transitions || []).find((transition) => (
+    !workflowStates.has(transition.from_state) || !workflowStates.has(transition.to_state)
+  ));
+  if (transitionWithUnknownState) {
+    throw new Error(`${scenario} workflow transition references an undeclared state: ${transitionWithUnknownState.action}.`);
+  }
+
   if (!replay.ok || !replay.transition_allowed || replay.replay_steps.some((step) => !step.pass)) {
     throw new Error(`${scenario} workflow replay failed.`);
   }
