@@ -4,7 +4,7 @@ Proof Capsule is the use-case-agnostic DUAL primitive behind TradeFlow-style pro
 
 This sandbox exposes that primitive through a Streamable HTTP MCP endpoint and a small UI. In production it can read from a live DUAL object and execute operator-gated event-bus mint/sync writes.
 
-The v0.6 model supercharges that surface into a proof operating layer: a universal multi-proof capsule, shareable proof room, scenario marketplace, agent-mode MCP aliases, workflow simulation, proof attachment, and the same operator-gated DUAL write boundary. Live writes remain operator-gated.
+The v0.7 model turns that surface into a SaaS package: universal multi-proof capsules, shareable proof rooms, scenario marketplace, agent-mode MCP aliases, workflow simulation, proof attachment, tenant onboarding, pricing/plan packaging, admin readiness, connector status, and the same operator-gated DUAL write boundary. Live writes remain operator-gated.
 
 ## Scope
 
@@ -46,6 +46,7 @@ Run the benchmark-style reviewer path:
 Open http://127.0.0.1:4184
 Click Reviewer mode
 Click Run proof
+Inspect the SaaS launch desk
 Inspect the proof rail and reviewer support checklist
 Open the public verifier
 ```
@@ -126,6 +127,10 @@ Tools:
 - `get_proof_timeline`
 - `compare_capsules`
 - `generate_agent_handoff_pack`
+- `get_saas_readiness`
+- `list_saas_plans`
+- `create_tenant_onboarding_plan`
+- `get_admin_control_plane`
 - `sync_proof_capsule_live`
 - `mint_proof_capsule_live`
 
@@ -146,6 +151,10 @@ Resources:
 - `capsule://agent-mode`
 - `capsule://operator-runbook`
 - `capsule://proof-runbook`
+- `capsule://saas/readiness`
+- `capsule://saas/plans`
+- `capsule://saas/onboarding`
+- `capsule://saas/admin`
 
 Resource template:
 
@@ -165,8 +174,32 @@ Prompts:
 - `compare_capsule_versions`
 - `publish_proof_capsule_verifier_page`
 - `supercharge_proof_capsule`
+- `launch_proof_capsule_saas_tenant`
 
-## v0.6 Supercharged Layer
+## v0.7 SaaS Launch Desk
+
+The public app now shows a SaaS control plane, not just a proof demo:
+
+- **Commercial package:** Pilot room, Growth control plane, and Enterprise trust layer plans, with limits, selling motion, upgrade triggers, and customer-bound activation requirements.
+- **Tenant onboarding:** generates a workspace id, plan, workflow seed, connector plan, launch steps, MCP first calls, write policy, and data boundary for a customer tenant.
+- **Admin plane:** exposes launch readiness, proof operations, connector health, write governance, audit schema, support model, and incident runbook.
+- **Connector readiness:** distinguishes live DUAL readback from demo/source-reference adapters that need tenant-specific production integration.
+
+The honest SaaS boundary is explicit:
+
+- Sellable now as a paid pilot or assisted B2B SaaS package.
+- Public demo does not issue customer accounts, API keys, SSO sessions, invoices, or payment collection.
+- Non-DUAL source systems remain structured refs until a tenant adapter or signed source feed is connected.
+- DUAL writes remain server-side and operator-gated; public writes stay false.
+
+REST endpoints:
+
+- `GET|POST /api/saas/readiness`
+- `GET /api/saas/plans`
+- `GET|POST /api/saas/onboarding`
+- `GET|POST /api/saas/admin`
+
+## v0.6 Universal Proof Layer
 
 The flagship scenario is `universal_proof_capsule`. It encapsulates:
 
@@ -320,6 +353,10 @@ The app is Vercel-ready. Public endpoints:
 - `GET /api/source/verifiers`
 - `GET /api/source/marketplace`
 - `POST /api/agent/handoff`
+- `GET|POST /api/saas/readiness`
+- `GET /api/saas/plans`
+- `GET|POST /api/saas/onboarding`
+- `GET|POST /api/saas/admin`
 - `GET|POST /mcp`
 
 Operator-gated endpoints:

@@ -15,15 +15,19 @@ import {
   capsuleToMarkdown,
   compareCapsules,
   composeProofCapsule,
+  createTenantOnboardingPlan,
   createCapsule,
   defaultPolicy,
   diagnoseCapsule,
   evaluateGate,
   evaluateCapsulePolicy,
   generateAgentHandoffPack,
+  getAdminControlPlane,
+  getSaasReadiness,
   getWorkflowDefinition,
   handoff,
   listScenarioMarketplace,
+  listSaasPlans,
   listVerifierMarketplace,
   listSourceVerifiers,
   listWorkflowTemplates,
@@ -89,6 +93,8 @@ const descriptorOutputSchema = {
   prompts: z.array(z.string()),
   supported_capsule_types: z.array(z.string()),
   supported_scenarios: z.array(z.string()),
+  commercialStage: z.string().optional(),
+  saas: unknownRecord.optional(),
   sourceBoundary: z.string()
 };
 
@@ -394,6 +400,50 @@ export function createMcpServer() {
         }, null, 2)
       }]
     })
+  );
+
+  server.registerResource(
+    "saas-readiness",
+    "capsule://saas/readiness",
+    {
+      title: "Proof Capsule SaaS Readiness",
+      description: "Commercial packaging, tenant activation, connector, and operating readiness for the Proof Capsule SaaS.",
+      mimeType: "application/json"
+    },
+    async (uri) => ({ contents: [{ uri: uri.href, text: JSON.stringify(getSaasReadiness({ dual_status: await getDualStatusLive() }), null, 2) }] })
+  );
+
+  server.registerResource(
+    "saas-plans",
+    "capsule://saas/plans",
+    {
+      title: "Proof Capsule SaaS Plans",
+      description: "Pilot, growth, and enterprise packaging for repeatable Proof Capsule tenants.",
+      mimeType: "application/json"
+    },
+    async (uri) => ({ contents: [{ uri: uri.href, text: JSON.stringify(listSaasPlans(), null, 2) }] })
+  );
+
+  server.registerResource(
+    "saas-onboarding",
+    "capsule://saas/onboarding",
+    {
+      title: "Proof Capsule Tenant Onboarding",
+      description: "Default tenant onboarding plan with workflow, connectors, launch steps, and MCP handoff.",
+      mimeType: "application/json"
+    },
+    async (uri) => ({ contents: [{ uri: uri.href, text: JSON.stringify(createTenantOnboardingPlan(), null, 2) }] })
+  );
+
+  server.registerResource(
+    "saas-admin",
+    "capsule://saas/admin",
+    {
+      title: "Proof Capsule Admin Control Plane",
+      description: "Admin control plane model for launch readiness, operations, audit, support, and incident runbooks.",
+      mimeType: "application/json"
+    },
+    async (uri) => ({ contents: [{ uri: uri.href, text: JSON.stringify(getAdminControlPlane({ dual_status: await getDualStatusLive() }), null, 2) }] })
   );
 
   server.registerResource(
@@ -1095,6 +1145,92 @@ export function createMcpServer() {
   );
 
   server.registerTool(
+    "get_saas_readiness",
+    {
+      title: "Get SaaS Readiness",
+      description: "Return commodity-SaaS packaging, tenant activation, connector readiness, and commercial boundaries for Proof Capsule.",
+      inputSchema: {
+        live_dual_readback: z.boolean().optional(),
+        live_dual_writes: z.boolean().optional(),
+        operator_gate_configured: z.boolean().optional(),
+        auth_configured: z.boolean().optional(),
+        billing_configured: z.boolean().optional(),
+        source_adapters_configured: z.boolean().optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(getSaasReadiness({
+      ...input,
+      dual_status: await getDualStatusLive()
+    }))
+  );
+
+  server.registerTool(
+    "list_saas_plans",
+    {
+      title: "List SaaS Plans",
+      description: "List the paid-pilot, growth, and enterprise packaging for Proof Capsule SaaS tenants.",
+      inputSchema: {
+        plan_id: z.string().optional(),
+        plan: z.string().optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(listSaasPlans(input))
+  );
+
+  server.registerTool(
+    "create_tenant_onboarding_plan",
+    {
+      title: "Create Tenant Onboarding Plan",
+      description: "Generate a customer tenant launch plan with plan, workflow seed, connectors, launch steps, MCP handoff, and data boundary.",
+      inputSchema: {
+        tenant_name: z.string().optional(),
+        tenant: z.string().optional(),
+        use_case: z.string().optional(),
+        plan_id: z.string().optional(),
+        plan: z.string().optional(),
+        regions: z.union([z.array(z.string()), z.string()]).optional(),
+        sources: z.union([z.array(z.string()), z.string()]).optional(),
+        selected_sources: z.union([z.array(z.string()), z.string()]).optional(),
+        compliance_profile: z.string().optional(),
+        go_live_window_days: z.number().optional(),
+        subject_type: z.string().optional(),
+        states: z.union([z.array(z.string()), z.string()]).optional(),
+        evidence_types: z.union([z.array(z.string()), z.string()]).optional(),
+        value_usd: z.number().optional(),
+        endpoint: z.string().optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(createTenantOnboardingPlan(input))
+  );
+
+  server.registerTool(
+    "get_admin_control_plane",
+    {
+      title: "Get Admin Control Plane",
+      description: "Return the SaaS admin model for readiness, tenant onboarding, operations, audit schema, support, and incident runbook.",
+      inputSchema: {
+        tenant_name: z.string().optional(),
+        tenant: z.string().optional(),
+        use_case: z.string().optional(),
+        plan_id: z.string().optional(),
+        sources: z.union([z.array(z.string()), z.string()]).optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(getAdminControlPlane({
+      ...input,
+      dual_status: await getDualStatusLive()
+    }))
+  );
+
+  server.registerTool(
     "sync_proof_capsule_live",
     {
       title: "Sync Proof Capsule Live",
@@ -1259,6 +1395,26 @@ export function createMcpServer() {
       "Use create_capsule or build_workflow_draft, attach_proof for each source ref, evaluate_gate, simulate_workflow, verify_capsule, get_proof_room, and publish_public_proof.",
       "Return what the capsule proves, what it does not prove, DUAL object/template/state links, source proof cards, agent-mode MCP calls, and operator-gated next steps.",
       "Do not call sync_proof_capsule_live or mint_proof_capsule_live unless an authorised operator explicitly supplies the token."
+    ].join("\n"))
+  );
+
+  server.registerPrompt(
+    "launch_proof_capsule_saas_tenant",
+    {
+      title: "Launch a Proof Capsule SaaS Tenant",
+      description: "Guide an agent through commercial packaging, tenant onboarding, source adapters, proof acceptance, and operator-gated launch.",
+      argsSchema: {
+        tenant: z.string().optional(),
+        workflow: z.string().optional(),
+        plan: z.string().optional()
+      }
+    },
+    ({ tenant, workflow, plan }) => textPrompt([
+      `Prepare a Proof Capsule SaaS tenant launch for ${tenant || "the customer"} using ${plan || "the best-fit plan"}.`,
+      `Workflow: ${workflow || "the supplied customer process"}.`,
+      "Call get_saas_readiness, list_saas_plans, create_tenant_onboarding_plan, and get_admin_control_plane.",
+      "Return the sellable package, launch checklist, source adapter gaps, proof acceptance path, public verifier story, and the operator-gated DUAL write boundary.",
+      "Do not claim self-serve auth, billing, settlement execution, or live external-source truth unless those customer systems are configured."
     ].join("\n"))
   );
 

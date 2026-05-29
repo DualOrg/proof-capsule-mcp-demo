@@ -29,6 +29,19 @@ const workflow = await get("/api/workflow/definition?scenario=universal_proof_ca
 const verifiers = await get("/api/source/verifiers");
 const marketplace = await get("/api/source/marketplace");
 const scenarioMarketplace = await get("/api/scenarios/marketplace");
+const saasReadiness = await get("/api/saas/readiness");
+const saasPlans = await get("/api/saas/plans");
+const tenantOnboarding = await post("/api/saas/onboarding", {
+  tenant_name: "Acme Proof Operations",
+  use_case: "multi-source proof rooms for regulated workflow decisions",
+  plan_id: "growth_control_plane",
+  sources: "dual, enterprise_vault, solana, ipfs, payment_preview"
+});
+const adminPlane = await post("/api/saas/admin", {
+  tenant_name: "Acme Proof Operations",
+  plan_id: "growth_control_plane",
+  sources: "dual, enterprise_vault, solana, ipfs, payment_preview"
+});
 const verification = await post("/api/capsule/verify", { capsule: demo.capsule });
 const replay = await post("/api/workflow/replay", { scenario: "universal_proof_capsule", capsule: demo.capsule });
 const evidence = await post("/api/evidence/verify", { scenario: "universal_proof_capsule", capsule: demo.capsule });
@@ -82,6 +95,13 @@ const ok = Boolean(
   && verifiers.verifier_count >= 10
   && marketplace.module_count >= verifiers.verifier_count
   && scenarioMarketplace.template_count >= 7
+  && saasReadiness.sellable_now
+  && saasReadiness.package_readiness_score >= 98
+  && saasPlans.plan_count >= 3
+  && tenantOnboarding.workspace_id
+  && tenantOnboarding.launch_steps?.length >= 5
+  && adminPlane.admin_plane_id
+  && adminPlane.ops_views?.length >= 4
   && draft.draft_hash
   && comparison.changed_hashes?.length > 0
   && handoff.mcp_calls?.some((call) => call.tool === "plan_transition_queue")
@@ -99,6 +119,10 @@ const ok = Boolean(
   && mcp.tools?.includes("simulate_workflow")
   && mcp.tools?.includes("publish_public_proof")
   && mcp.tools?.includes("verify_capsule")
+  && mcp.tools?.includes("get_saas_readiness")
+  && mcp.tools?.includes("list_saas_plans")
+  && mcp.tools?.includes("create_tenant_onboarding_plan")
+  && mcp.tools?.includes("get_admin_control_plane")
 );
 
 console.log(JSON.stringify({
@@ -124,6 +148,11 @@ console.log(JSON.stringify({
   sourceVerifierCount: verifiers.verifier_count,
   marketplaceModuleCount: marketplace.module_count,
   scenarioTemplateCount: scenarioMarketplace.template_count,
+  saasPackageScore: saasReadiness.package_readiness_score,
+  saasActivationScore: saasReadiness.tenant_activation_score,
+  saasPlanCount: saasPlans.plan_count,
+  tenantWorkspaceId: tenantOnboarding.workspace_id,
+  adminPlaneId: adminPlane.admin_plane_id,
   workflowDraftHash: draft.draft_hash,
   compareHash: comparison.compare_hash,
   handoffPackId: handoff.pack_id,

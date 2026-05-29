@@ -17,13 +17,16 @@ for (const required of [
   "build_workflow_draft",
   "compose_proof_capsule",
   "compare_capsules",
+  "create_tenant_onboarding_plan",
   "create_capsule",
   "diagnose_capsule",
   "evaluate_gate",
   "evaluate_capsule_policy",
   "generate_agent_handoff_pack",
+  "get_admin_control_plane",
   "get_proof_room",
   "get_public_verifier_page",
+  "get_saas_readiness",
   "get_current_live_capsule",
   "get_capsule_handoff",
   "get_capsule_status",
@@ -31,6 +34,7 @@ for (const required of [
   "get_live_dual_status",
   "get_workflow_definition",
   "list_scenario_marketplace",
+  "list_saas_plans",
   "list_verifier_marketplace",
   "list_source_verifiers",
   "list_workflow_templates",
@@ -78,6 +82,10 @@ for (const required of [
   "capsule://proof-room",
   "capsule://agent-mode",
   "capsule://scenario-marketplace",
+  "capsule://saas/admin",
+  "capsule://saas/onboarding",
+  "capsule://saas/plans",
+  "capsule://saas/readiness",
   "capsule://workflows"
 ]) {
   if (!resourceUris.includes(required)) throw new Error(`Missing resource: ${required}`);
@@ -99,7 +107,7 @@ if (!templates.resourceTemplates.some((template) => template.uriTemplate === "ca
 
 const prompts = await client.listPrompts();
 const promptNames = prompts.prompts.map((prompt) => prompt.name);
-for (const required of ["proof_capsule_review", "mcp_client_handoff", "red_team_capsule_boundary", "design_proof_capsule_workflow", "operate_capsule_transition", "compare_capsule_versions", "publish_proof_capsule_verifier_page", "supercharge_proof_capsule"]) {
+for (const required of ["proof_capsule_review", "mcp_client_handoff", "red_team_capsule_boundary", "design_proof_capsule_workflow", "operate_capsule_transition", "compare_capsule_versions", "publish_proof_capsule_verifier_page", "supercharge_proof_capsule", "launch_proof_capsule_saas_tenant"]) {
   if (!promptNames.includes(required)) throw new Error(`Missing prompt: ${required}`);
 }
 
@@ -248,6 +256,49 @@ const scenarioMarketplace = await client.callTool({
 });
 if ((scenarioMarketplace.structuredContent?.template_count || 0) < 7 || !scenarioMarketplace.structuredContent?.templates?.some((template) => template.scenario === "universal_proof_capsule")) {
   throw new Error("Scenario marketplace is incomplete.");
+}
+
+const saasReadiness = await client.callTool({
+  name: "get_saas_readiness",
+  arguments: { live_dual_readback: true, operator_gate_configured: true }
+});
+if (!saasReadiness.structuredContent?.sellable_now || saasReadiness.structuredContent?.package_readiness_score < 98) {
+  throw new Error("SaaS readiness model is incomplete.");
+}
+
+const saasPlans = await client.callTool({
+  name: "list_saas_plans",
+  arguments: { plan_id: "growth_control_plane" }
+});
+if ((saasPlans.structuredContent?.plan_count || 0) < 3 || !saasPlans.structuredContent?.plans?.some((plan) => plan.plan_id === "growth_control_plane")) {
+  throw new Error("SaaS plan catalogue is incomplete.");
+}
+
+const tenantPlan = await client.callTool({
+  name: "create_tenant_onboarding_plan",
+  arguments: {
+    tenant_name: "Acme Proof Operations",
+    use_case: "multi-source proof rooms for regulated workflow decisions",
+    plan_id: "growth_control_plane",
+    sources: "dual, enterprise_vault, solana, ipfs, payment_preview",
+    endpoint: url
+  }
+});
+if (!tenantPlan.structuredContent?.workspace_id || !tenantPlan.structuredContent?.launch_steps?.length || !tenantPlan.structuredContent?.mcp_handoff?.first_calls?.includes("get_saas_readiness")) {
+  throw new Error("Tenant onboarding plan is incomplete.");
+}
+
+const adminPlane = await client.callTool({
+  name: "get_admin_control_plane",
+  arguments: {
+    tenant_name: "Acme Proof Operations",
+    use_case: "multi-source proof rooms for regulated workflow decisions",
+    plan_id: "growth_control_plane",
+    sources: "dual, enterprise_vault, solana, ipfs, payment_preview"
+  }
+});
+if (!adminPlane.structuredContent?.admin_plane_id || !adminPlane.structuredContent?.ops_views?.length || !adminPlane.structuredContent?.audit_schema?.capsule_id) {
+  throw new Error("Admin control plane is incomplete.");
 }
 
 const created = await client.callTool({
@@ -407,6 +458,11 @@ console.log(JSON.stringify({
   transitionQueueId: transition.structuredContent.queue_id,
   sourceVerifierCount: verifiers.structuredContent.verifier_count,
   marketplaceModuleCount: marketplace.structuredContent.module_count,
+  saasPackageScore: saasReadiness.structuredContent.package_readiness_score,
+  saasActivationScore: saasReadiness.structuredContent.tenant_activation_score,
+  saasPlanCount: saasPlans.structuredContent.plan_count,
+  tenantWorkspaceId: tenantPlan.structuredContent.workspace_id,
+  adminPlaneId: adminPlane.structuredContent.admin_plane_id,
   workflowDraftHash: draft.structuredContent.draft_hash,
   compareHash: comparison.structuredContent.compare_hash,
   handoffPackId: handoff.structuredContent.pack_id,

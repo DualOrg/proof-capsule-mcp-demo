@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Proof Capsule Control Desk</title>
-    <link rel="stylesheet" href="/styles.css?v=0.6.0-supercharge1">
+    <link rel="stylesheet" href="/styles.css?v=0.7.0-saas1">
   </head>
   <body>
     <header class="topbar">
@@ -102,6 +102,63 @@
           <strong>Controlled live DUAL actions</strong>
           <p>Sync and mint stay behind the operator token; public writes remain false and raw evidence stays in source systems.</p>
         </article>
+      </section>
+
+      <section id="saasDeskPanel" class="panel saas-desk" aria-label="SaaS launch desk">
+        <div class="panel-title">
+          <span>SaaS launch desk</span>
+          <strong id="saasStage">Loading</strong>
+        </div>
+        <div class="saas-summary" id="saasSummary"></div>
+        <div class="saas-grid">
+          <section>
+            <div class="panel-title compact-title">
+              <span>Commercial package</span>
+              <strong id="saasPlanStatus">Loading</strong>
+            </div>
+            <div id="saasPlanStack" class="saas-stack"></div>
+          </section>
+          <section>
+            <div class="panel-title compact-title">
+              <span>Tenant onboarding</span>
+              <strong id="tenantStatus">Default tenant</strong>
+            </div>
+            <div class="form-grid">
+              <div>
+                <label for="tenantName">Tenant</label>
+                <input id="tenantName" type="text" value="Acme Proof Operations">
+              </div>
+              <div>
+                <label for="tenantPlan">Plan</label>
+                <select id="tenantPlan">
+                  <option value="pilot_room">Pilot room</option>
+                  <option value="growth_control_plane" selected>Growth control plane</option>
+                  <option value="enterprise_trust_layer">Enterprise trust layer</option>
+                </select>
+              </div>
+            </div>
+            <label for="tenantUseCase">Use case</label>
+            <input id="tenantUseCase" type="text" value="multi-source proof rooms for regulated workflow decisions">
+            <label for="tenantSources">Sources</label>
+            <input id="tenantSources" type="text" value="dual, enterprise_vault, solana, ipfs, payment_preview">
+            <button id="generateTenantPlanBtn" type="button">Generate onboarding plan</button>
+            <div id="tenantLaunchStack" class="saas-stack"></div>
+          </section>
+          <section>
+            <div class="panel-title compact-title">
+              <span>Admin plane</span>
+              <strong id="adminPlaneStatus">Loading</strong>
+            </div>
+            <div id="adminPlaneStack" class="saas-stack"></div>
+          </section>
+          <section>
+            <div class="panel-title compact-title">
+              <span>Connector readiness</span>
+              <strong id="connectorStatus">Loading</strong>
+            </div>
+            <div id="connectorStack" class="saas-stack"></div>
+          </section>
+        </div>
       </section>
 
       <section id="publicVerifierBanner" class="panel public-verifier-banner" hidden>
@@ -422,6 +479,6 @@
       </section>
     </main>
 
-    <script type="module" src="/client.js?v=0.6.0-supercharge1"></script>
+    <script type="module" src="/client.js?v=0.7.0-saas1"></script>
   </body>
 </html>

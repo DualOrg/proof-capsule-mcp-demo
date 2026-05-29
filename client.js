@@ -4,6 +4,10 @@ let currentWorkflow = null;
 let lastTransitionPlan = null;
 let compareBase = null;
 let lastProofRun = null;
+let saasReadiness = null;
+let saasPlans = null;
+let tenantPlan = null;
+let adminPlane = null;
 let publicMode = false;
 let reviewerMode = false;
 let reviewerStepIndex = 0;
@@ -44,6 +48,10 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function displayToken(value) {
+  return String(value ?? "-").replaceAll("_", " ");
+}
+
 function safeExternalUrl(value) {
   try {
     const url = new URL(String(value || ""), window.location.origin);
@@ -63,12 +71,24 @@ const reviewerSteps = [
     id: "scenario",
     targetId: "scenarioPanel",
     title: "Choose a proof workflow",
-    body: "Start with one of the five demo workflows. Each one composes a different proof capsule shape while keeping the same DUAL verifier boundary.",
+    body: "Start with one of the six demo workflows. Each one composes a different proof capsule shape while keeping the same DUAL verifier boundary.",
     facts: () => [
       ["Scenario", $("scenarioLabel")?.textContent || "Loading"],
-      ["MCP", "32 tools"],
+      ["MCP", "36 tools"],
       ["Public writes", "false"],
       ["Mode", liveStatus?.mode || "checking"]
+    ]
+  },
+  {
+    id: "saas",
+    targetId: "saasDeskPanel",
+    title: "Check SaaS package",
+    body: "The launch desk shows the sellable package: plans, tenant onboarding, connector readiness, admin controls, and customer-bound activation gaps.",
+    facts: () => [
+      ["Stage", saasReadiness?.product_stage || "Loading"],
+      ["Package", saasReadiness?.package_readiness_score ? `${saasReadiness.package_readiness_score}/100` : "-"],
+      ["Tenant", tenantPlan?.workspace_id || "pending"],
+      ["Sellable", saasReadiness?.sellable_now ? "yes" : "checking"]
     ]
   },
   {
@@ -369,6 +389,84 @@ function renderScenarioMarketplace(payload) {
       compose().catch(showError);
     });
   });
+}
+
+function renderSaasDesk(readiness, plans, onboarding, admin) {
+  saasReadiness = readiness;
+  saasPlans = plans;
+  tenantPlan = onboarding;
+  adminPlane = admin;
+
+  $("saasStage").textContent = displayToken(readiness.activation_status || readiness.product_stage || "Packaged");
+  $("saasPlanStatus").textContent = `${plans.plan_count || 0} plans`;
+  $("tenantStatus").textContent = onboarding.workspace_id ? "Plan ready" : "Pending";
+  $("adminPlaneStatus").textContent = admin.admin_plane_id ? "Operational" : "Pending";
+  $("connectorStatus").textContent = `${(readiness.connector_readiness || []).length} sources`;
+
+  $("saasSummary").innerHTML = [
+    ["Product stage", displayToken(readiness.product_stage || "-")],
+    ["Package readiness", `${readiness.package_readiness_score || "-"} / 100`],
+    ["Tenant activation", `${readiness.tenant_activation_score || "-"} / 100`],
+    ["Selling motion", readiness.selling_motion || "-"],
+    ["First sale", readiness.launch_summary?.first_sale || "-"]
+  ].map(([label, value]) => `
+    <div class="saas-metric">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `).join("");
+
+  $("saasPlanStack").innerHTML = (plans.plans || []).map((plan) => `
+    <div class="saas-row ${plan.selected ? "selected" : ""}">
+      <span>${escapeHtml(displayToken(plan.motion))}</span>
+      <strong>${escapeHtml(plan.label)}</strong>
+      <p>${escapeHtml(plan.price_band)} · ${escapeHtml(plan.ideal_for)}</p>
+      <code>${escapeHtml(plan.proof_capsule_fit)}</code>
+    </div>
+  `).join("");
+
+  renderTenantPlan(onboarding);
+
+  $("adminPlaneStack").innerHTML = (admin.ops_views || []).map((view) => `
+    <div class="saas-row">
+      <span>${escapeHtml(displayToken(view.status))}</span>
+      <strong>${escapeHtml(view.view)} · ${escapeHtml(view.metric)}</strong>
+      <p>${escapeHtml(view.action)}</p>
+    </div>
+  `).join("");
+
+  $("connectorStack").innerHTML = (readiness.connector_readiness || []).slice(0, 10).map((connector) => `
+    <div class="saas-row ${connector.commercial_status === "production_reference_ready" ? "ready" : ""}">
+      <span>${escapeHtml(displayToken(connector.commercial_status))}</span>
+      <strong>${escapeHtml(displayToken(connector.source))}</strong>
+      <p>${escapeHtml(connector.proves)}</p>
+    </div>
+  `).join("");
+
+  refreshReviewChrome();
+}
+
+function renderTenantPlan(payload) {
+  tenantPlan = payload;
+  $("tenantStatus").textContent = payload.workspace_id ? "Plan ready" : "Pending";
+  $("tenantLaunchStack").innerHTML = (payload.launch_steps || []).map((step) => `
+    <div class="saas-row ${step.status === "ready" ? "ready" : ""}">
+      <span>${escapeHtml(displayToken(step.status))}</span>
+      <strong>${escapeHtml(step.step)}. ${escapeHtml(step.title)}</strong>
+      <p>${escapeHtml(step.detail)}</p>
+    </div>
+  `).join("");
+}
+
+async function loadSaasDesk() {
+  const [readiness, plans, onboarding, admin] = await Promise.all([
+    jsonFetch("/api/saas/readiness"),
+    jsonFetch("/api/saas/plans"),
+    jsonFetch("/api/saas/onboarding"),
+    jsonFetch("/api/saas/admin")
+  ]);
+  renderSaasDesk(readiness, plans, onboarding, admin);
+  return { readiness, plans, onboarding, admin };
 }
 
 function renderProofRoom(roomPayload) {
@@ -856,6 +954,41 @@ async function buildWorkflow() {
   $("output").textContent = JSON.stringify(payload, null, 2);
 }
 
+async function generateTenantPlan() {
+  const payload = await jsonFetch("/api/saas/onboarding", {
+    method: "POST",
+    body: JSON.stringify({
+      tenant_name: $("tenantName").value,
+      use_case: $("tenantUseCase").value,
+      plan_id: $("tenantPlan").value,
+      sources: $("tenantSources").value,
+      endpoint: `${window.location.origin}/mcp`
+    })
+  });
+  renderTenantPlan(payload);
+  const admin = await jsonFetch("/api/saas/admin", {
+    method: "POST",
+    body: JSON.stringify({
+      tenant_name: $("tenantName").value,
+      use_case: $("tenantUseCase").value,
+      plan_id: $("tenantPlan").value,
+      sources: $("tenantSources").value
+    })
+  });
+  adminPlane = admin;
+  $("adminPlaneStatus").textContent = admin.admin_plane_id ? "Operational" : "Pending";
+  $("adminPlaneStack").innerHTML = (admin.ops_views || []).map((view) => `
+    <div class="saas-row">
+      <span>${escapeHtml(displayToken(view.status))}</span>
+      <strong>${escapeHtml(view.view)} · ${escapeHtml(view.metric)}</strong>
+      <p>${escapeHtml(view.action)}</p>
+    </div>
+  `).join("");
+  $("outputTitle").textContent = "Tenant SaaS onboarding plan";
+  $("output").textContent = JSON.stringify(payload, null, 2);
+  refreshReviewChrome();
+}
+
 async function planTransition() {
   const payload = await jsonFetch("/api/transition/plan", {
     method: "POST",
@@ -1020,6 +1153,7 @@ $("verifyEvidenceBtn").addEventListener("click", () => verifyEvidence().then((pa
   $("output").textContent = JSON.stringify(payload, null, 2);
 }).catch(showError));
 $("buildWorkflowBtn").addEventListener("click", () => buildWorkflow().catch(showError));
+$("generateTenantPlanBtn").addEventListener("click", () => generateTenantPlan().catch(showError));
 $("planTransitionBtn").addEventListener("click", () => planTransition().catch(showError));
 $("applyTransitionBtn").addEventListener("click", () => applyTransitionLocal().catch(showError));
 $("syncTransitionBtn").addEventListener("click", () => syncQueuedTransition().catch(showError));
@@ -1033,6 +1167,7 @@ Promise.resolve()
   .then(loadStatus)
   .then(async (status) => {
     await loadScenarioMarketplace();
+    await loadSaasDesk();
     return status;
   })
   .then(async (status) => {

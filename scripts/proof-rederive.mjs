@@ -6,11 +6,15 @@ import {
   buildWorkflowDraft,
   compareCapsules,
   composeProofCapsule,
+  createTenantOnboardingPlan,
   diagnoseCapsule,
   evaluateCapsulePolicy,
   generateAgentHandoffPack,
+  getAdminControlPlane,
+  getSaasReadiness,
   getWorkflowDefinition,
   listScenarioMarketplace,
+  listSaasPlans,
   listVerifierMarketplace,
   listSourceVerifiers,
   planTransitionQueue,
@@ -172,6 +176,21 @@ const uniqueSubjectIds = new Set(results.map((result) => result.subjectId));
 const verifierRegistry = listSourceVerifiers();
 const marketplace = listVerifierMarketplace();
 const scenarioMarketplace = listScenarioMarketplace();
+const saasPlans = listSaasPlans();
+const saasReadiness = getSaasReadiness({ live_dual_readback: true, operator_gate_configured: true });
+const tenantOnboarding = createTenantOnboardingPlan({
+  tenant_name: "Acme Proof Operations",
+  use_case: "multi-source proof rooms for regulated workflow decisions",
+  plan_id: "growth_control_plane",
+  sources: "dual, enterprise_vault, solana, ipfs, payment_preview"
+});
+const adminPlane = getAdminControlPlane({
+  tenant_name: "Acme Proof Operations",
+  plan_id: "growth_control_plane",
+  sources: "dual, enterprise_vault, solana, ipfs, payment_preview",
+  live_dual_readback: true,
+  operator_gate_configured: true
+});
 const draft = buildWorkflowDraft({
   title: "Supplier onboarding approval",
   subject_type: "supplier_record",
@@ -207,6 +226,22 @@ if (scenarioMarketplace.template_count < 7 || !scenarioMarketplace.templates.som
   throw new Error("Scenario marketplace is incomplete.");
 }
 
+if (saasPlans.plan_count < 3 || !saasPlans.plans.some((plan) => plan.plan_id === "growth_control_plane")) {
+  throw new Error("SaaS plan catalogue is incomplete.");
+}
+
+if (!saasReadiness.sellable_now || saasReadiness.package_readiness_score < 98 || !saasReadiness.readiness_checks?.some((check) => check.key === "tenant_onboarding" && check.ready)) {
+  throw new Error("SaaS readiness model is incomplete.");
+}
+
+if (!tenantOnboarding.workspace_id || !tenantOnboarding.launch_steps?.length || !tenantOnboarding.mcp_handoff?.first_calls?.includes("get_saas_readiness")) {
+  throw new Error("Tenant onboarding plan is incomplete.");
+}
+
+if (!adminPlane.admin_plane_id || !adminPlane.ops_views?.length || !adminPlane.audit_schema?.capsule_id) {
+  throw new Error("Admin control plane is incomplete.");
+}
+
 if (!draft.ok || !draftEvidence.ok || !draft.workflow_definition.transitions.length) {
   throw new Error("Workflow builder draft failed.");
 }
@@ -230,6 +265,11 @@ console.log(JSON.stringify({
   sourceVerifierCount: verifierRegistry.verifier_count,
   marketplaceModuleCount: marketplace.module_count,
   scenarioTemplateCount: scenarioMarketplace.template_count,
+  saasPlanCount: saasPlans.plan_count,
+  saasPackageScore: saasReadiness.package_readiness_score,
+  saasActivationScore: saasReadiness.tenant_activation_score,
+  tenantWorkspaceId: tenantOnboarding.workspace_id,
+  adminPlaneId: adminPlane.admin_plane_id,
   workflowDraftHash: draft.draft_hash,
   compareHash: comparison.compare_hash,
   publicVerifierUrl: publicVerifier.public_url,

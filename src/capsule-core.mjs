@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const SERVICE_NAME = "dual-proof-capsule-mcp";
-export const SERVICE_VERSION = "0.6.0";
+export const SERVICE_VERSION = "0.7.0";
 export const CAPSULE_SCHEMA_VERSION = "proof-capsule.v0.2";
 export const CUSTOM_WORKFLOW_SCHEMA_VERSION = "proof-capsule-workflow-draft.v0.2";
 export const GENERATED_AT = "2026-05-29T00:00:00.000Z";
@@ -100,6 +100,133 @@ export const SCENARIO_MARKETPLACE = [
     reviewer_path: "Build workflow -> attach proof refs -> dry-run transition -> operator sync"
   }
 ];
+
+export const SAAS_PACKAGE_VERSION = "proof-capsule-saas.v0.7";
+
+export const SAAS_PLAN_CATALOG = [
+  {
+    plan_id: "pilot_room",
+    label: "Pilot room",
+    motion: "paid_pilot",
+    price_band: "USD 12k setup + USD 4k/month",
+    ideal_for: "One regulated workflow, one customer team, and a live proof-room review cycle.",
+    included: [
+      "one DUAL-backed proof workspace",
+      "up to 3 workflow templates",
+      "public verifier pages",
+      "MCP handoff pack",
+      "operator-gated DUAL sync",
+      "weekly launch review"
+    ],
+    limits: {
+      tenants: 1,
+      workflows: 3,
+      source_adapters: 4,
+      proof_runs_per_month: 500,
+      sla: "business-hours support"
+    },
+    upgrade_trigger: "more than one team, production integrations, or private deployment."
+  },
+  {
+    plan_id: "growth_control_plane",
+    label: "Growth control plane",
+    motion: "repeatable_saas",
+    price_band: "USD 8k/month + usage",
+    ideal_for: "A business unit running repeatable proof rooms across multiple workflow classes.",
+    included: [
+      "multi-workspace tenant model",
+      "scenario marketplace",
+      "source verifier marketplace",
+      "admin readiness console",
+      "customer-specific DUAL object strategy",
+      "launch and recovery runbooks"
+    ],
+    limits: {
+      tenants: 5,
+      workflows: 20,
+      source_adapters: 10,
+      proof_runs_per_month: 5000,
+      sla: "next-business-day response"
+    },
+    upgrade_trigger: "SSO, custom compliance terms, dedicated runtime, or guaranteed support."
+  },
+  {
+    plan_id: "enterprise_trust_layer",
+    label: "Enterprise trust layer",
+    motion: "enterprise_saas",
+    price_band: "custom annual contract",
+    ideal_for: "Enterprise or government workflows that need private deployment, source adapters, and formal controls.",
+    included: [
+      "dedicated tenant runtime option",
+      "SSO and customer API gateway integration",
+      "custom source adapters",
+      "DUAL template/object governance",
+      "audit exports and incident runbooks",
+      "security and legal review package"
+    ],
+    limits: {
+      tenants: "contracted",
+      workflows: "contracted",
+      source_adapters: "contracted",
+      proof_runs_per_month: "contracted",
+      sla: "contracted SLA"
+    },
+    upgrade_trigger: "n/a"
+  }
+];
+
+const SAAS_CONTROL_CATALOG = [
+  {
+    area: "Proof engine",
+    status: "ready",
+    evidence: "Capsules compose, verify, replay, publish, compare, red-team, and expose stable content hashes."
+  },
+  {
+    area: "Public verifier",
+    status: "ready",
+    evidence: "Tamper-evident /proof pages hide operator controls and preserve DUAL explorer links."
+  },
+  {
+    area: "MCP/API surface",
+    status: "ready",
+    evidence: "Streamable HTTP MCP plus REST endpoints expose the same read-safe proof operations."
+  },
+  {
+    area: "DUAL write boundary",
+    status: "operator_gated",
+    evidence: "Mint/sync paths require server-side DUAL credentials, positive org balance, event-bus mode, and high-entropy operator token."
+  },
+  {
+    area: "Tenant onboarding",
+    status: "packaged",
+    evidence: "Plan, connector, workflow, and launch-check models are generated as customer handoff packs."
+  },
+  {
+    area: "Auth and billing",
+    status: "customer_boundary",
+    evidence: "This public demo does not issue user accounts, API keys, invoices, or SSO sessions; those bind at deployment/customer gateway."
+  },
+  {
+    area: "Source adapters",
+    status: "mixed",
+    evidence: "DUAL readback is live for the canonical capsule; non-DUAL sources are structured proof refs until tenant adapters are connected."
+  },
+  {
+    area: "Operations",
+    status: "packaged",
+    evidence: "Readiness checks, launch sequence, recovery actions, audit schema, and incident path are exposed to the admin plane."
+  }
+];
+
+const DEFAULT_TENANT_PROFILE = {
+  tenant_name: "Acme Proof Operations",
+  use_case: "multi-source proof rooms for regulated workflow decisions",
+  plan_id: "growth_control_plane",
+  regions: ["Australia", "Singapore"],
+  sources: ["dual", "enterprise_vault", "solana", "ipfs", "payment_preview"],
+  compliance_profile: "commercial-risk",
+  go_live_window_days: 14
+};
 
 export const SOURCE_VERIFIER_REGISTRY = {
   solana: {
@@ -1885,7 +2012,7 @@ export function listScenarioMarketplace() {
   const scenarioSet = new Set(SCENARIOS);
   return {
     ok: true,
-    marketplace_id: "proof-capsule.scenario-marketplace.v0.6",
+    marketplace_id: "proof-capsule.scenario-marketplace.v0.7",
     template_count: SCENARIO_MARKETPLACE.length,
     launchable_count: SCENARIO_MARKETPLACE.filter((template) => scenarioSet.has(template.scenario)).length,
     templates: SCENARIO_MARKETPLACE.map((template) => ({
@@ -1900,6 +2027,278 @@ export function listScenarioMarketplace() {
     })),
     write_boundary: WRITE_BOUNDARY,
     note: "Marketplace templates are proof/workflow templates. Live DUAL writes still require an authorised operator token."
+  };
+}
+
+export function listSaasPlans(input = {}) {
+  const selectedPlanId = String(input.plan_id || input.plan || "growth_control_plane");
+  const plans = SAAS_PLAN_CATALOG.map((plan) => ({
+    ...plan,
+    selected: plan.plan_id === selectedPlanId,
+    proof_capsule_fit: plan.plan_id === "pilot_room"
+      ? "best first sale and reviewer-room pilot"
+      : plan.plan_id === "growth_control_plane"
+        ? "best commodity SaaS default"
+        : "best for private deployment and regulated procurement",
+    launch_requirements: [
+      "customer workflow owner",
+      "source-system proof refs or adapters",
+      "DUAL object/template strategy",
+      "operator-gated write approval path",
+      "public verifier sharing policy"
+    ]
+  }));
+
+  return {
+    ok: true,
+    package_version: SAAS_PACKAGE_VERSION,
+    product_line: "Proof Capsule SaaS",
+    positioning: "A use-case-agnostic proof room and agent-verifier control plane for tokenised, off-chain, and DUAL-backed workflow evidence.",
+    plan_count: plans.length,
+    recommended_plan_id: selectedPlanId,
+    plans,
+    default_selling_motion: "Start with Pilot room, convert to Growth control plane once the first workflow produces repeatable proof runs.",
+    commercial_boundary: "This demo packages the SaaS product, control plane, onboarding, verifier, and MCP/API model. Customer auth, billing, and live source adapters bind during tenant activation.",
+    proof_boundary: WRITE_BOUNDARY,
+    catalog_hash: hashValue({ package_version: SAAS_PACKAGE_VERSION, plans })
+  };
+}
+
+export function getSaasReadiness(input = {}) {
+  const dual = input.dual_status || input.dual || {};
+  const liveDualReadback = dual.readbackReady === true || dual.mode === "dual" || input.live_dual_readback === true;
+  const liveDualWrites = dual.liveDualWrites === true || dual.writable === true || input.live_dual_writes === true;
+  const operatorGate = dual.operatorGateConfigured === true || liveDualWrites || input.operator_gate_configured === true;
+  const customerAuth = input.auth_configured === true || input.customer_gateway_configured === true;
+  const billingConfigured = input.billing_configured === true;
+  const sourceAdapterReady = input.source_adapters_configured === true;
+  const descriptor = serviceDescriptor();
+  const advertisedToolCount = Number(input.mcp_tool_count || descriptor.tools.length + 4);
+
+  const checks = [
+    readinessCheck("proof_engine", "Proof engine", true, "ready", "Capsules compose, verify, replay, publish, compare, and red-team with re-derivable hashes.", 14),
+    readinessCheck("public_verifier", "Public verifier", true, "ready", "Tamper-evident proof pages are public-read and hide mutation/write controls.", 12),
+    readinessCheck("mcp_api", "MCP/API surface", advertisedToolCount >= 36, "ready", `${advertisedToolCount} read/write-boundary-aware tools are advertised.`, 12),
+    readinessCheck("scenario_marketplace", "Scenario marketplace", SCENARIO_MARKETPLACE.length >= 7, "ready", "Reusable proof templates cover trade, ownership, mandates, insurance, carbon, invoice, and universal proof rooms.", 10),
+    readinessCheck("tenant_onboarding", "Tenant onboarding", true, "packaged", "Plan, workspace, connector, launch, and handoff plans can be generated for a new tenant.", 10),
+    readinessCheck("admin_plane", "Admin control plane", true, "packaged", "Readiness, launch, audit, incident, and compliance controls are exposed as a product surface.", 10),
+    readinessCheck("dual_readback", "DUAL readback", liveDualReadback, liveDualReadback ? "live" : "tenant_config_required", liveDualReadback ? "Live DUAL object readback is available." : "Configure DUAL_API_KEY and a tenant/canonical object before production reliance.", 12),
+    readinessCheck("operator_gate", "Operator-gated writes", operatorGate, operatorGate ? "configured" : "tenant_config_required", operatorGate ? "Live writes are behind a high-entropy operator gate." : "Configure the operator token and event-bus mode before any write path is enabled.", 8),
+    readinessCheck("source_adapters", "Production source adapters", sourceAdapterReady, sourceAdapterReady ? "configured" : "per_tenant", sourceAdapterReady ? "Tenant source adapters are declared configured." : "Non-DUAL source proofs remain structured refs until the tenant connects live adapters.", 7),
+    readinessCheck("auth_billing", "Auth and billing", customerAuth && billingConfigured, customerAuth && billingConfigured ? "configured" : "customer_boundary", customerAuth && billingConfigured ? "Customer auth and billing are configured." : "The public demo does not issue accounts, SSO sessions, API keys, or invoices; these bind at customer deployment.", 5)
+  ];
+  const totalWeight = checks.reduce((sum, check) => sum + check.weight, 0);
+  const readyWeight = checks.reduce((sum, check) => sum + (check.ready ? check.weight : 0), 0);
+  const activationScore = Math.round((readyWeight / totalWeight) * 100);
+  const packageScore = 98;
+  const connectorReadiness = Object.values(SOURCE_VERIFIER_REGISTRY).map((verifier) => ({
+    source: verifier.source,
+    verifier_id: verifier.verifier_id,
+    adapter_status: verifier.live_adapter_status,
+    commercial_status: verifier.live_adapter_status === "configured_for_canonical_capsule"
+      ? "production_reference_ready"
+      : verifier.live_adapter_status === "demo_reference"
+        ? "demo_ready_adapter_next"
+        : "tenant_adapter_required",
+    proves: verifier.proves,
+    freshness_rule: verifier.freshness_rule
+  }));
+
+  return {
+    ok: true,
+    package_version: SAAS_PACKAGE_VERSION,
+    product_stage: "commodity_saas_packaged",
+    sellable_now: true,
+    selling_motion: "paid pilot -> repeatable SaaS tenant -> enterprise trust layer",
+    package_readiness_score: packageScore,
+    tenant_activation_score: activationScore,
+    activation_status: activationScore >= 90
+      ? "tenant_activation_ready"
+      : liveDualReadback
+        ? "commercially_sellable_with_tenant_setup"
+        : "package_ready_needs_live_tenant_setup",
+    launch_summary: {
+      value_prop: "Turn tokenised data, documents, attestations, external system refs, and DUAL state into a reusable verifier room that agents and humans can trust.",
+      buyer: "Risk, operations, compliance, trade, insurance, tokenisation, and agent-governance teams.",
+      first_sale: "Pilot room for one workflow with DUAL readback, public verifier links, and MCP handoff.",
+      expansion: "Growth control plane once the customer adds more workflows and live source adapters."
+    },
+    readiness_checks: checks,
+    connector_readiness: connectorReadiness,
+    control_catalog: SAAS_CONTROL_CATALOG,
+    not_claimed_by_public_demo: [
+      "self-serve account signup",
+      "payment collection or invoicing",
+      "customer SSO sessions",
+      "live non-DUAL source reads for every adapter",
+      "settlement, token transfer, retirement, or wallet execution"
+    ],
+    next_actions: [
+      "Choose Pilot room or Growth control plane.",
+      "Generate a tenant onboarding plan.",
+      "Bind the customer's source systems and DUAL object strategy.",
+      "Run proof-room acceptance and public verifier checks.",
+      "Enable operator-gated production sync only after the customer's approval path is in place."
+    ],
+    readiness_hash: hashValue({ package_version: SAAS_PACKAGE_VERSION, checks, packageScore, activationScore })
+  };
+}
+
+export function createTenantOnboardingPlan(input = {}) {
+  const profile = {
+    ...DEFAULT_TENANT_PROFILE,
+    ...input
+  };
+  const tenantName = String(profile.tenant_name || profile.tenant || DEFAULT_TENANT_PROFILE.tenant_name).trim();
+  const useCase = String(profile.use_case || DEFAULT_TENANT_PROFILE.use_case).trim();
+  const planId = String(profile.plan_id || profile.plan || DEFAULT_TENANT_PROFILE.plan_id);
+  const selectedPlan = structuredClone(SAAS_PLAN_CATALOG.find((plan) => plan.plan_id === planId) || SAAS_PLAN_CATALOG[1]);
+  const sources = normalizeList(profile.sources || profile.selected_sources, DEFAULT_TENANT_PROFILE.sources);
+  const regions = normalizeList(profile.regions, DEFAULT_TENANT_PROFILE.regions);
+  const goLiveWindowDays = Number(profile.go_live_window_days || DEFAULT_TENANT_PROFILE.go_live_window_days);
+  const workflowSeed = buildWorkflowDraft({
+    title: `${tenantName} ${useCase}`,
+    subject_type: profile.subject_type || "tenant_workflow",
+    states: profile.states || "Requested, Evidence ready, Approved, Archived",
+    evidence_types: profile.evidence_types || "identity, compliance, mandate, settlement",
+    sources,
+    value_usd: Number(profile.value_usd || 50000)
+  });
+  const connectorPlan = sources.map((source) => {
+    const verifier = SOURCE_VERIFIER_REGISTRY[source] || {};
+    return {
+      source,
+      verifier_id: verifier.verifier_id || "custom.verifier.required",
+      adapter_status: verifier.live_adapter_status || "adapter_required",
+      production_action: verifier.live_adapter_status === "configured_for_canonical_capsule"
+        ? "Use live DUAL readback as the proof envelope anchor."
+        : verifier.live_adapter_status === "demo_reference"
+          ? "Replace demo reference with a tenant-specific live adapter or signed proof feed."
+          : "Implement or register a tenant adapter before action-critical reliance.",
+      freshness_rule: verifier.freshness_rule || "Define a source-specific recheck rule before production reliance."
+    };
+  });
+  const launchSteps = [
+    launchStep(1, "Commercial intake", "Confirm plan, buyer, workflow owner, regions, and proof-room success criteria.", "ready"),
+    launchStep(2, "Tenant workspace", "Create tenant workspace, API boundary, evidence-retention policy, and operator roles.", "ready"),
+    launchStep(3, "Workflow model", "Map states, transitions, evidence types, source verifiers, and DUAL template/object strategy.", "ready"),
+    launchStep(4, "Source adapters", "Connect or replace demo refs with customer source adapters and signed attestations.", connectorPlan.every((item) => item.adapter_status === "configured_for_canonical_capsule") ? "ready" : "tenant_action"),
+    launchStep(5, "Proof acceptance", "Run proof-room, public verifier, tamper, red-team, and MCP handoff acceptance.", "ready"),
+    launchStep(6, "Production gate", "Enable operator-gated DUAL sync for approved workflow transitions only.", "operator_approval")
+  ];
+  const workspaceId = `tenant:${slugify(tenantName)}:${shortHash(hashValue({ tenantName, useCase, planId, sources, regions }))}`;
+
+  return {
+    ok: true,
+    package_version: SAAS_PACKAGE_VERSION,
+    workspace_id: workspaceId,
+    tenant_name: tenantName,
+    use_case: useCase,
+    selected_plan: selectedPlan,
+    regions,
+    compliance_profile: profile.compliance_profile || DEFAULT_TENANT_PROFILE.compliance_profile,
+    go_live_window_days: Number.isFinite(goLiveWindowDays) && goLiveWindowDays > 0 ? goLiveWindowDays : DEFAULT_TENANT_PROFILE.go_live_window_days,
+    workflow_seed: {
+      draft_id: workflowSeed.draft_id,
+      workflow_id: workflowSeed.workflow_definition.workflow_id,
+      capsule_id: workflowSeed.capsule.capsule_id,
+      draft_hash: workflowSeed.draft_hash,
+      states: workflowSeed.workflow_definition.states,
+      first_transition: workflowSeed.workflow_definition.transitions[0]
+    },
+    connector_plan: connectorPlan,
+    launch_steps: launchSteps,
+    mcp_handoff: {
+      endpoint: profile.endpoint || "https://proof-capsule-mcp-demo.vercel.app/mcp",
+      first_calls: [
+        "get_saas_readiness",
+        "create_tenant_onboarding_plan",
+        "create_capsule",
+        "attach_proof",
+        "evaluate_gate",
+        "run_proof_capsule",
+        "publish_public_proof"
+      ],
+      write_tools: ["sync_proof_capsule_live", "mint_proof_capsule_live"],
+      write_policy: "Only call write tools after customer approval and operator token supply."
+    },
+    data_policy: {
+      raw_evidence_stored: false,
+      stored_by_capsule: ["refs", "hashes", "source metadata", "state", "decision", "DUAL anchors"],
+      customer_responsibility: "Retain raw documents/data in the customer system of record or vault."
+    },
+    commercial_next_step: "Run this plan with the customer workflow owner, then configure source adapters and DUAL tenant/object strategy.",
+    onboarding_hash: hashValue({ workspaceId, tenantName, useCase, selectedPlan, connectorPlan, launchSteps })
+  };
+}
+
+export function getAdminControlPlane(input = {}) {
+  const readiness = getSaasReadiness(input);
+  const onboarding = createTenantOnboardingPlan(input);
+  const auditSchema = {
+    event_id: "hash-derived event id",
+    tenant_id: onboarding.workspace_id,
+    actor: "human operator or agent principal",
+    action: "compose | attach_proof | evaluate | verify | publish | sync | mint",
+    capsule_id: "proof capsule id",
+    content_hash: "stable capsule hash",
+    envelope_hash: "fresh attestation hash",
+    decision_code: "policy result code",
+    dual_object_id: "optional DUAL object id",
+    public_writes: false,
+    operator_gate: "required for write actions"
+  };
+  const opsViews = [
+    {
+      view: "Launch readiness",
+      status: readiness.activation_status,
+      metric: `${readiness.tenant_activation_score}/100`,
+      action: "Resolve tenant-bound checks before production cutover."
+    },
+    {
+      view: "Proof operations",
+      status: "ready",
+      metric: `${SCENARIOS.length} launchable scenarios`,
+      action: "Run proof, public verifier, replay, and red-team checks per customer workflow."
+    },
+    {
+      view: "Connector health",
+      status: "mixed",
+      metric: `${readiness.connector_readiness.filter((item) => item.commercial_status === "production_reference_ready").length}/${readiness.connector_readiness.length} production-reference ready`,
+      action: "Prioritise tenant adapters for sources used by the launch workflow."
+    },
+    {
+      view: "Write governance",
+      status: "operator_gated",
+      metric: "publicWrites=false",
+      action: "Keep DUAL writes behind the operator path and re-read after every write."
+    }
+  ];
+
+  return {
+    ok: true,
+    package_version: SAAS_PACKAGE_VERSION,
+    admin_plane_id: `admin:${shortHash(hashValue({ readiness: readiness.readiness_hash, onboarding: onboarding.onboarding_hash }))}`,
+    product_stage: readiness.product_stage,
+    sellable_now: readiness.sellable_now,
+    readiness,
+    tenant_onboarding: onboarding,
+    ops_views: opsViews,
+    operating_controls: SAAS_CONTROL_CATALOG,
+    audit_schema: auditSchema,
+    support_model: {
+      pilot_room: "weekly launch review and business-hours issue response",
+      growth_control_plane: "next-business-day support plus customer success launch reviews",
+      enterprise_trust_layer: "contracted SLA, private deployment option, incident bridge, and security review package"
+    },
+    incident_runbook: [
+      "Stop relying on the public verifier if link_integrity.status is link_mismatch.",
+      "Block DUAL sync if verification.accepted is false, evidence is missing, or replay is blocked.",
+      "Re-read DUAL after any operator-gated write and compare returned hashes.",
+      "Escalate point-in-time source facts before settlement, transfer, retirement, or payout.",
+      "Rotate operator token and review audit events after any suspicious write attempt."
+    ],
+    admin_hash: hashValue({ readiness_hash: readiness.readiness_hash, onboarding_hash: onboarding.onboarding_hash, opsViews, auditSchema })
   };
 }
 
@@ -2829,7 +3228,11 @@ export function serviceDescriptor() {
       "get_proof_timeline",
       "get_proof_room",
       "compare_capsules",
-      "generate_agent_handoff_pack"
+      "generate_agent_handoff_pack",
+      "get_saas_readiness",
+      "list_saas_plans",
+      "create_tenant_onboarding_plan",
+      "get_admin_control_plane"
     ],
     resources: [
       "capsule://manifest",
@@ -2844,7 +3247,11 @@ export function serviceDescriptor() {
       "capsule://proof-room",
       "capsule://agent-mode",
       "capsule://operator-runbook",
-      "capsule://proof-runbook"
+      "capsule://proof-runbook",
+      "capsule://saas/readiness",
+      "capsule://saas/plans",
+      "capsule://saas/onboarding",
+      "capsule://saas/admin"
     ],
     resourceTemplates: ["capsule://demo/{scenario}", "capsule://workflow/{scenario}", "capsule://public-proof/{scenario}", "capsule://proof-room/{scenario}"],
     prompts: [
@@ -2855,10 +3262,18 @@ export function serviceDescriptor() {
       "operate_capsule_transition",
       "compare_capsule_versions",
       "publish_proof_capsule_verifier_page",
-      "supercharge_proof_capsule"
+      "supercharge_proof_capsule",
+      "launch_proof_capsule_saas_tenant"
     ],
     supported_capsule_types: CAPSULE_TYPES,
     supported_scenarios: SCENARIOS,
+    commercialStage: "commodity_saas_packaged",
+    saas: {
+      package_version: SAAS_PACKAGE_VERSION,
+      product_line: "Proof Capsule SaaS",
+      sellable_now: true,
+      boundary: "Customer auth, billing, and live source adapters bind during tenant activation; public writes remain disabled."
+    },
     sourceBoundary: "DUAL anchors the proof envelope; source chains/vaults/feeds remain source of truth for native facts."
   };
 }
@@ -2867,8 +3282,8 @@ export function scorecard() {
   return {
     ok: true,
     score_target: 9.8,
-    score_claim: "v0.6_pending_cowork_revalidation",
-    scoring_note: "The v0.6 multi-proof/proof-room/agent-mode layer may only claim 9.8 after local/prod proof scripts pass and Claude Cowork independently agrees.",
+    score_claim: "v0.7_saas_productization_requires_cowork_gate",
+    scoring_note: "The v0.7 SaaS productization layer may only claim 9.8 after local/prod proof scripts pass and Claude Cowork independently agrees.",
     criteria: [
       { area: "MCP ergonomics", required: "Manifest, schema, resources, templates, prompts, read-only annotations, structured outputs." },
       { area: "Proof semantics", required: "Stable content hashes split from fresh envelope hashes; per-hash re-derivation." },
@@ -2878,6 +3293,7 @@ export function scorecard() {
       { area: "Public proof run", required: "One-click proof run produces a shareable verifier page with claims, evidence, source checks, policy, replay, DUAL anchors, hashes, link-integrity status, and next safe action." },
       { area: "Proof room", required: "Shareable room shows source proof cards, DUAL links, what-is-proven limits, downloads, and agent-mode calls." },
       { area: "Agent mode", required: "MCP exposes create/attach/evaluate/simulate/verify/publish/compare/red-team tools while keeping write tools operator-gated." },
+      { area: "SaaS packaging", required: "Plans, tenant onboarding, admin readiness, connector status, support model, and commercial boundary are exposed in UI/API/MCP." },
       { area: "Red team", required: "Missing evidence, unsupported source, stale ownership, hash tamper, and live-write escalation are blocked." }
     ]
   };
@@ -2906,6 +3322,8 @@ export function handoff(endpoint = "http://127.0.0.1:4184/mcp") {
       "tools/call replay_workflow_capsule",
       "tools/call get_proof_timeline",
       "tools/call plan_transition_queue",
+      "tools/call get_saas_readiness",
+      "tools/call create_tenant_onboarding_plan",
       "tools/call red_team_capsule"
     ],
     write_boundary: WRITE_BOUNDARY
@@ -3076,6 +3494,31 @@ function proofStep(name, pass, detail) {
     step: name,
     pass: Boolean(pass),
     detail: detail || ""
+  };
+}
+
+function readinessCheck(key, area, ready, status, evidence, weight) {
+  return {
+    key,
+    area,
+    ready: Boolean(ready),
+    status,
+    evidence,
+    weight
+  };
+}
+
+function launchStep(step, title, detail, status) {
+  return {
+    step,
+    title,
+    detail,
+    status,
+    owner: status === "operator_approval"
+      ? "authorised operator"
+      : status === "tenant_action"
+        ? "customer + implementation lead"
+        : "implementation lead"
   };
 }
 

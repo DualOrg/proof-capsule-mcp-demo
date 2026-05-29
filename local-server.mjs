@@ -10,11 +10,15 @@ import {
   buildWorkflowDraft,
   compareCapsules,
   composeProofCapsule,
+  createTenantOnboardingPlan,
   diagnoseCapsule,
   evaluateCapsulePolicy,
   generateAgentHandoffPack,
+  getAdminControlPlane,
+  getSaasReadiness,
   getWorkflowDefinition,
   listScenarioMarketplace,
+  listSaasPlans,
   listVerifierMarketplace,
   listSourceVerifiers,
   planTransitionQueue,
@@ -267,6 +271,56 @@ async function handleApi(req, res, url) {
 
   if (req.method === "GET" && url.pathname === "/api/scenarios/marketplace") {
     return sendJson(res, 200, listScenarioMarketplace());
+  }
+
+  if (url.pathname === "/api/saas/readiness") {
+    if (req.method === "GET") {
+      return sendJson(res, 200, getSaasReadiness({ dual_status: await getDualStatusLive() }));
+    }
+    if (req.method === "POST") {
+      return sendJson(res, 200, getSaasReadiness({
+        ...(await readBody(req)),
+        dual_status: await getDualStatusLive()
+      }));
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/saas/plans") {
+    return sendJson(res, 200, listSaasPlans({
+      plan_id: url.searchParams.get("plan_id") || url.searchParams.get("plan") || undefined
+    }));
+  }
+
+  if (url.pathname === "/api/saas/onboarding") {
+    if (req.method === "GET") {
+      return sendJson(res, 200, createTenantOnboardingPlan({
+        tenant_name: url.searchParams.get("tenant_name") || undefined,
+        use_case: url.searchParams.get("use_case") || undefined,
+        plan_id: url.searchParams.get("plan_id") || undefined,
+        sources: url.searchParams.get("sources") || undefined
+      }));
+    }
+    if (req.method === "POST") {
+      return sendJson(res, 200, createTenantOnboardingPlan(await readBody(req)));
+    }
+  }
+
+  if (url.pathname === "/api/saas/admin") {
+    if (req.method === "GET") {
+      return sendJson(res, 200, getAdminControlPlane({
+        tenant_name: url.searchParams.get("tenant_name") || undefined,
+        use_case: url.searchParams.get("use_case") || undefined,
+        plan_id: url.searchParams.get("plan_id") || undefined,
+        sources: url.searchParams.get("sources") || undefined,
+        dual_status: await getDualStatusLive()
+      }));
+    }
+    if (req.method === "POST") {
+      return sendJson(res, 200, getAdminControlPlane({
+        ...(await readBody(req)),
+        dual_status: await getDualStatusLive()
+      }));
+    }
   }
 
   if (req.method === "POST" && url.pathname === "/api/agent/handoff") {

@@ -228,6 +228,80 @@ body {
   margin: 0;
 }
 
+.saas-desk {
+  margin-bottom: 16px;
+}
+
+.saas-summary {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.saas-metric,
+.saas-row {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.saas-metric span,
+.saas-row span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.saas-metric strong,
+.saas-row strong {
+  display: block;
+  line-height: 1.25;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+
+.saas-row p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  margin: 6px 0 0;
+}
+
+.saas-row code {
+  color: var(--teal-dark);
+  font-size: 11px;
+}
+
+.saas-row.selected,
+.saas-row.ready {
+  background: var(--mint);
+  border-color: #badfc9;
+}
+
+.saas-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.saas-grid > section {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fbfdfd;
+  min-width: 0;
+  padding: 12px;
+}
+
+.saas-stack {
+  display: grid;
+  gap: 8px;
+}
+
 .lede {
   color: var(--muted);
   max-width: 820px;
@@ -986,6 +1060,7 @@ body.public-mode .top-actions,
 body.public-mode .intro,
 body.public-mode .walkthrough-band,
 body.public-mode .supercharge-grid,
+body.public-mode .saas-desk,
 body.public-mode .controls,
 body.public-mode .operations-grid,
 body.public-mode .proof .button-row,
@@ -1182,6 +1257,8 @@ pre {
   .proof-run-grid,
   .proof-room-grid,
   .supercharge-grid,
+  .saas-summary,
+  .saas-grid,
   body.public-mode .proof-run-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1258,6 +1335,8 @@ pre {
   .proof-run-grid,
   .proof-room-grid,
   .supercharge-grid,
+  .saas-summary,
+  .saas-grid,
   body.public-mode .proof-run-grid,
   .form-grid,
   .button-row,
