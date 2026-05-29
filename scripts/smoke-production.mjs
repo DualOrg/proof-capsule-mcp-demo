@@ -35,6 +35,8 @@ const transition = await post("/api/transition/plan", { scenario: "luxury_resale
 const timeline = await post("/api/capsule/timeline", { scenario: "luxury_resale", capsule: demo.capsule });
 const proofRun = await post("/api/proof/run", { scenario: "luxury_resale", capsule: demo.capsule });
 const publicVerifier = await get("/api/proof/public?scenario=luxury_resale");
+const pinnedPublicVerifier = await get(`/api/proof/public?scenario=luxury_resale&proof_id=${encodeURIComponent(demo.capsule.capsule_id)}&content_hash=${encodeURIComponent(demo.capsule.hashes.capsule_content_hash)}`);
+const tamperedPublicVerifier = await get(`/api/proof/public?scenario=luxury_resale&proof_id=${encodeURIComponent(demo.capsule.capsule_id)}&content_hash=${encodeURIComponent("sha256:0000000000000000000000000000000000000000000000000000000000000000")}`);
 const diagnosis = await post("/api/capsule/diagnose", { scenario: "luxury_resale", capsule: demo.capsule });
 const draft = await post("/api/workflow/build", {
   title: "Supplier onboarding approval",
@@ -68,6 +70,10 @@ const ok = Boolean(
   && proofRun.public_verifier?.public_url
   && publicVerifier.public_url
   && publicVerifier.sections?.source_checks?.length > 0
+  && pinnedPublicVerifier.link_integrity?.verified === true
+  && pinnedPublicVerifier.link_integrity?.status === "link_verified"
+  && tamperedPublicVerifier.ok === false
+  && tamperedPublicVerifier.link_integrity?.status === "link_mismatch"
   && diagnosis.healthy
   && verifiers.verifier_count >= 10
   && marketplace.module_count >= verifiers.verifier_count
@@ -100,6 +106,8 @@ console.log(JSON.stringify({
   timelineHash: timeline.timeline_hash,
   proofRunId: proofRun.run_id,
   publicVerifierUrl: publicVerifier.public_url,
+  publicVerifierLinkStatus: pinnedPublicVerifier.link_integrity?.status,
+  tamperedPublicVerifierStatus: tamperedPublicVerifier.link_integrity?.status,
   sourceVerifierCount: verifiers.verifier_count,
   marketplaceModuleCount: marketplace.module_count,
   workflowDraftHash: draft.draft_hash,

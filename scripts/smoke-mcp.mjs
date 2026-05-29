@@ -165,10 +165,35 @@ if (!proofRun.structuredContent?.run_id || !proofRun.structuredContent?.public_v
 
 const publicVerifier = await client.callTool({
   name: "get_public_verifier_page",
-  arguments: { scenario: "tradeflow_medical_devices", capsule, base_url: "http://127.0.0.1:4184", endpoint: url }
+  arguments: {
+    scenario: "tradeflow_medical_devices",
+    capsule,
+    proof_id: capsule.capsule_id,
+    content_hash: capsule.hashes.capsule_content_hash,
+    base_url: "http://127.0.0.1:4184",
+    endpoint: url
+  }
 });
 if (!publicVerifier.structuredContent?.public_url || !publicVerifier.structuredContent?.sections?.source_checks?.length) {
   throw new Error("Public verifier page model is incomplete.");
+}
+if (!publicVerifier.structuredContent?.link_integrity?.verified || publicVerifier.structuredContent?.link_integrity?.status !== "link_verified") {
+  throw new Error("Pinned public verifier link did not verify.");
+}
+
+const tamperedPublicVerifier = await client.callTool({
+  name: "get_public_verifier_page",
+  arguments: {
+    scenario: "tradeflow_medical_devices",
+    capsule,
+    proof_id: capsule.capsule_id,
+    content_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    base_url: "http://127.0.0.1:4184",
+    endpoint: url
+  }
+});
+if (tamperedPublicVerifier.structuredContent?.ok !== false || tamperedPublicVerifier.structuredContent?.link_integrity?.status !== "link_mismatch") {
+  throw new Error("Tampered public verifier link was not rejected.");
 }
 
 const transition = await client.callTool({
@@ -290,6 +315,8 @@ console.log(JSON.stringify({
   timelineHash: timeline.structuredContent.timeline_hash,
   proofRunId: proofRun.structuredContent.run_id,
   publicVerifierUrl: publicVerifier.structuredContent.public_url,
+  publicVerifierLinkStatus: publicVerifier.structuredContent.link_integrity.status,
+  tamperedPublicVerifierStatus: tamperedPublicVerifier.structuredContent.link_integrity.status,
   transitionQueueId: transition.structuredContent.queue_id,
   sourceVerifierCount: verifiers.structuredContent.verifier_count,
   marketplaceModuleCount: marketplace.structuredContent.module_count,

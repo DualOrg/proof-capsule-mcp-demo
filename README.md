@@ -4,7 +4,7 @@ Proof Capsule is the use-case-agnostic DUAL primitive behind TradeFlow-style pro
 
 This sandbox exposes that primitive through a Streamable HTTP MCP endpoint and a small UI. In production it can read from a live DUAL object and execute operator-gated event-bus mint/sync writes.
 
-The v0.5.1 model adds the public proof layer on top of the operator workflow: one-click proof runs, shareable verifier pages under `/proof/...`, public DUAL/block-explorer links, proof-readiness scoring, and MCP tools/resources/prompts for publishing a verifier-ready proof page. Live writes remain operator-gated.
+The v0.5.2 model adds the public proof layer on top of the operator workflow: one-click proof runs, shareable verifier pages under `/proof/...`, public DUAL/block-explorer links, link-integrity checks, proof-readiness scoring, and MCP tools/resources/prompts for publishing a verifier-ready proof page. Live writes remain operator-gated.
 
 ## Scope
 
@@ -43,7 +43,7 @@ Click Open public page
 The public verifier route is also directly addressable:
 
 ```text
-http://127.0.0.1:4184/proof/PC-LUXURY-RESALE-001?scenario=luxury_resale
+http://127.0.0.1:4184/proof/PC-LUXURY-RESALE-001?scenario=luxury_resale&content_hash=...
 ```
 
 ## Live DUAL Setup
@@ -188,6 +188,14 @@ All of these are public read/dry-run operations. The only state-changing paths r
 
 `get_public_verifier_page` is the shareable read side. It returns the capsule summary, claims, evidence refs, source checks, policy decision, state transition, workflow replay, DUAL anchor, hash verification block, timeline, transition plan, recovery actions, and source links. The UI renders this at `/proof/:capsuleId`.
 
+Public verifier links can be pinned with `content_hash` or `hash`. The page re-composes the capsule, checks the requested proof id and content hash against the derived capsule, and returns `link_integrity.status`:
+
+- `link_verified`: proof id and content hash match the re-derived capsule.
+- `link_unpinned`: the proof model verified, but the URL did not include both proof id and content hash.
+- `link_mismatch`: the supplied proof id or content hash does not match; the response remains readable but `ok: false` and the page tells the reader not to rely on the link.
+
+The `/proof/...` route is presentation-read-only: operator controls, JSON output, local mutation tools, and DUAL write buttons are hidden. The underlying write APIs and MCP write tools still require the server-side operator token.
+
 The proof score is a 100-point operator-readiness score:
 
 - 25 hash re-derivation
@@ -250,7 +258,7 @@ The app is Vercel-ready. Public endpoints:
 - `POST /api/capsule/timeline`
 - `POST /api/capsule/compare`
 - `POST /api/proof/run`
-- `GET /api/proof/public?scenario=...`
+- `GET /api/proof/public?scenario=...&proof_id=...&content_hash=...`
 - `POST /api/proof/public`
 - `GET /proof/:capsuleId?scenario=...`
 - `GET /api/workflow/definition?scenario=...`

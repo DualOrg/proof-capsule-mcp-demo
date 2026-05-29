@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Proof Capsule Studio</title>
-    <link rel="stylesheet" href="/styles.css?v=0.5.1">
+    <link rel="stylesheet" href="/styles.css?v=0.5.2">
   </head>
   <body>
     <header class="topbar">
@@ -31,6 +31,20 @@
           <strong>Public verify / operator-gated DUAL writes</strong>
           <p>Verification is open. Mint and sync actions require the operator token and write only proof-envelope hashes, refs, state, and metadata to DUAL.</p>
         </div>
+      </section>
+
+      <section id="publicVerifierBanner" class="panel public-verifier-banner" hidden>
+        <div>
+          <p class="eyebrow">Public proof</p>
+          <h2 id="publicVerifierTitle">Verifier page</h2>
+          <p id="publicVerifierStatement" class="lede">Read-only proof envelope.</p>
+        </div>
+        <div class="integrity-card">
+          <span>Share link integrity</span>
+          <strong id="publicVerifierIntegrity">Checking</strong>
+          <p id="publicVerifierAction">Re-deriving proof content.</p>
+        </div>
+        <div id="publicVerifierChecks" class="integrity-checks"></div>
       </section>
 
       <section id="proofRunPanel" class="panel proof-run" hidden>
@@ -253,21 +267,21 @@
             <strong>Lifecycle</strong>
           </div>
           <div id="timelineStack" class="timeline-stack"></div>
-          <div class="panel-title compact-title">
+          <div class="panel-title compact-title operator-only">
             <span>Capsule compare</span>
             <strong id="compareStatus">Unset</strong>
           </div>
-          <div class="button-row">
+          <div class="button-row operator-only">
             <button id="setCompareBaseBtn" type="button">Set base</button>
             <button id="compareCurrentBtn" type="button">Compare</button>
           </div>
-          <div id="compareStack" class="hash-stack"></div>
-          <div class="panel-title compact-title">
+          <div id="compareStack" class="hash-stack operator-only"></div>
+          <div class="panel-title compact-title operator-only">
             <span>Agent handoff</span>
             <strong id="handoffStatus">Pending</strong>
           </div>
-          <button id="handoffBtn" type="button">Generate pack</button>
-          <div id="handoffStack" class="hash-stack"></div>
+          <button id="handoffBtn" class="operator-only" type="button">Generate pack</button>
+          <div id="handoffStack" class="hash-stack operator-only"></div>
           <div class="hash-stack" id="hashStack"></div>
           <div class="link-stack" id="linkStack"></div>
         </aside>
@@ -282,6 +296,6 @@
       </section>
     </main>
 
-    <script type="module" src="/client.js?v=0.5.1"></script>
+    <script type="module" src="/client.js?v=0.5.2"></script>
   </body>
 </html>

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const SERVICE_NAME = "dual-proof-capsule-mcp";
-export const SERVICE_VERSION = "0.5.1";
+export const SERVICE_VERSION = "0.5.2";
 export const CAPSULE_SCHEMA_VERSION = "proof-capsule.v0.1";
 export const CUSTOM_WORKFLOW_SCHEMA_VERSION = "proof-capsule-workflow-draft.v0.1";
 export const GENERATED_AT = "2026-05-29T00:00:00.000Z";
@@ -2188,6 +2188,12 @@ export function buildPublicVerifierPage(input = {}) {
   });
   const publicProofId = `proof:${shortHash(capsule.hashes?.capsule_content_hash)}`;
   const publicUrl = publicProofUrl(input.base_url, capsule, scenario);
+  const linkIntegrity = verifyPublicProofLink({
+    requested_proof_id: input.proof_id || input.id || input.public_proof_id || input.capsule_id,
+    requested_content_hash: input.content_hash || input.hash,
+    capsule,
+    public_proof_id: publicProofId
+  });
   const sourceLinks = [
     ...(capsule.evidence_refs || []).map((ref) => ({
       label: ref.evidence_id,
@@ -2213,13 +2219,15 @@ export function buildPublicVerifierPage(input = {}) {
   ].filter((link) => Boolean(link.url));
 
   return {
-    ok: true,
+    ok: linkIntegrity.ok,
     page_type: "public_verifier",
     public_proof_id: publicProofId,
     public_url: publicUrl,
+    public_mode: true,
     scenario,
     capsule_id: capsule.capsule_id,
     capsule,
+    link_integrity: linkIntegrity,
     summary: {
       title: capsule.subject?.label || capsule.capsule_id,
       subject_id: capsule.subject?.subject_id || "",
@@ -2275,6 +2283,10 @@ export function buildPublicVerifierPage(input = {}) {
         state_hash: capsule.dual_anchor?.state_hash || "",
         integrity_hash: capsule.dual_anchor?.integrity_hash || "",
         mode: capsule.dual_anchor?.mode || "",
+        coverage: dualLinks.length ? "live_dual_explorer_links" : "demo_reference",
+        note: dualLinks.length
+          ? "Live DUAL object/template/state links are present for this capsule."
+          : "This scenario currently uses a demo DUAL reference; use TradeFlow as the flagship live-link example until this scenario is operator-synced.",
         links: dualLinks
       },
       hashes: verification.hashes,
@@ -2371,15 +2383,15 @@ export function scorecard() {
   return {
     ok: true,
     score_target: 9.8,
-    score_claim: "v0.5_draft_until_revalidated",
-    scoring_note: "The v0.5 public proof-run layer may only claim 9.8 after local/prod proof scripts pass and Claude Cowork independently agrees.",
+    score_claim: "v0.5.2_pending_cowork_revalidation",
+    scoring_note: "The v0.5.2 public verifier layer may only claim 9.8 after local/prod proof scripts pass and Claude Cowork independently agrees.",
     criteria: [
       { area: "MCP ergonomics", required: "Manifest, schema, resources, templates, prompts, read-only annotations, structured outputs." },
       { area: "Proof semantics", required: "Stable content hashes split from fresh envelope hashes; per-hash re-derivation." },
       { area: "Safety", required: "Public writes disabled; live DUAL writes only through operator-gated paths; no wallet actions or raw evidence storage." },
       { area: "Demo clarity", required: "Human UI shows capsule data, hashes, anchors, policy result, and verifier output." },
       { area: "Operator workflow", required: "Workflow builder, evidence intake, transition queue, recovery, timeline, verifier marketplace, compare, and agent handoff work without public writes." },
-      { area: "Public proof run", required: "One-click proof run produces a shareable verifier page with claims, evidence, source checks, policy, replay, DUAL anchors, hashes, and next safe action." },
+      { area: "Public proof run", required: "One-click proof run produces a shareable verifier page with claims, evidence, source checks, policy, replay, DUAL anchors, hashes, link-integrity status, and next safe action." },
       { area: "Red team", required: "Missing evidence, unsupported source, stale ownership, hash tamper, and live-write escalation are blocked." }
     ]
   };
@@ -2461,6 +2473,65 @@ function proofStep(name, pass, detail) {
     step: name,
     pass: Boolean(pass),
     detail: detail || ""
+  };
+}
+
+function normalizeHashToken(value) {
+  return String(value || "").trim().replace(/^sha256:/, "");
+}
+
+function verifyPublicProofLink({ requested_proof_id, requested_content_hash, capsule, public_proof_id }) {
+  const expectedCapsuleId = capsule.capsule_id || "";
+  const expectedPublicProofId = public_proof_id || "";
+  const expectedContentHash = normalizeHashToken(capsule.hashes?.capsule_content_hash);
+  const expectedShortHash = shortHash(capsule.hashes?.capsule_content_hash);
+  const requestedProofId = String(requested_proof_id || "").trim();
+  const requestedContentHash = normalizeHashToken(requested_content_hash);
+  const proofIdSupplied = Boolean(requestedProofId);
+  const contentHashSupplied = Boolean(requestedContentHash);
+  const proofIdMatches = !proofIdSupplied
+    || requestedProofId === expectedCapsuleId
+    || requestedProofId === expectedPublicProofId
+    || requestedProofId === expectedPublicProofId.replace(/^proof:/, "");
+  const contentHashMatches = !contentHashSupplied
+    || requestedContentHash === expectedContentHash
+    || requestedContentHash === expectedShortHash;
+  const ok = proofIdMatches && contentHashMatches;
+  return {
+    ok,
+    verified: ok && proofIdSupplied && contentHashSupplied,
+    status: !ok ? "link_mismatch" : proofIdSupplied && contentHashSupplied ? "link_verified" : "link_unpinned",
+    requested: {
+      proof_id: requestedProofId || null,
+      content_hash: requestedContentHash || null
+    },
+    expected: {
+      capsule_id: expectedCapsuleId,
+      public_proof_id: expectedPublicProofId,
+      content_hash: capsule.hashes?.capsule_content_hash || null,
+      content_hash_short: expectedShortHash
+    },
+    checks: [
+      {
+        check: "proof_id",
+        supplied: proofIdSupplied,
+        verifies: proofIdMatches,
+        expected: `${expectedCapsuleId} or ${expectedPublicProofId}`,
+        received: requestedProofId || ""
+      },
+      {
+        check: "content_hash",
+        supplied: contentHashSupplied,
+        verifies: contentHashMatches,
+        expected: expectedShortHash,
+        received: requestedContentHash || ""
+      }
+    ],
+    action: ok
+      ? proofIdSupplied && contentHashSupplied
+        ? "Share link is bound to the recomposed proof content."
+        : "Proof content verified, but this link is not fully pinned; add content_hash for tamper-evident sharing."
+      : "Do not rely on this share link; the requested proof id or content hash does not match the recomposed capsule."
   };
 }
 

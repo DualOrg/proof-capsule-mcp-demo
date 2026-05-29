@@ -34,6 +34,22 @@ function runScenario(scenario) {
   const handoff = generateAgentHandoffPack({ scenario, capsule, endpoint: "http://127.0.0.1:4184/mcp" });
   const proofRun = runProofCapsule({ scenario, capsule, base_url: "http://127.0.0.1:4184", endpoint: "http://127.0.0.1:4184/mcp" });
   const publicVerifier = buildPublicVerifierPage({ scenario, capsule, base_url: "http://127.0.0.1:4184", endpoint: "http://127.0.0.1:4184/mcp" });
+  const pinnedPublicVerifier = buildPublicVerifierPage({
+    scenario,
+    capsule,
+    proof_id: capsule.capsule_id,
+    content_hash: capsule.hashes.capsule_content_hash,
+    base_url: "http://127.0.0.1:4184",
+    endpoint: "http://127.0.0.1:4184/mcp"
+  });
+  const tamperedPublicVerifier = buildPublicVerifierPage({
+    scenario,
+    capsule,
+    proof_id: capsule.capsule_id,
+    content_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    base_url: "http://127.0.0.1:4184",
+    endpoint: "http://127.0.0.1:4184/mcp"
+  });
   const tamperedCapsule = structuredClone(capsule);
   tamperedCapsule.evidence_refs[0] = {
     ...tamperedCapsule.evidence_refs[0],
@@ -107,6 +123,14 @@ function runScenario(scenario) {
     throw new Error(`${scenario} public verifier page is incomplete.`);
   }
 
+  if (!pinnedPublicVerifier.ok || !pinnedPublicVerifier.link_integrity?.verified || pinnedPublicVerifier.link_integrity.status !== "link_verified") {
+    throw new Error(`${scenario} pinned public verifier link did not verify.`);
+  }
+
+  if (tamperedPublicVerifier.ok || tamperedPublicVerifier.link_integrity?.status !== "link_mismatch") {
+    throw new Error(`${scenario} tampered public verifier link was not rejected.`);
+  }
+
   return {
     scenario,
     capsuleId: capsule.capsule_id,
@@ -122,6 +146,8 @@ function runScenario(scenario) {
     timelineHash: timeline.timeline_hash,
     proofRunId: proofRun.run_id,
     publicProofId: publicVerifier.public_proof_id,
+    publicLinkVerified: pinnedPublicVerifier.link_integrity.verified,
+    tamperedPublicLinkRejected: tamperedPublicVerifier.link_integrity.status === "link_mismatch",
     proofScore: proofRun.proof_score.score,
     transitionQueueId: transitionPlan.queue_id,
     tamperRejected: !tamperVerification.ok,
@@ -180,6 +206,10 @@ if (!publicVerifier.public_url || !publicVerifier.sections?.policy_decision?.dec
   throw new Error("Public verifier page model is incomplete.");
 }
 
+if (publicVerifier.link_integrity?.status !== "link_unpinned" || !publicVerifier.public_url.includes("content_hash=")) {
+  throw new Error("Public verifier model did not expose default unpinned status and pinned share URL.");
+}
+
 console.log(JSON.stringify({
   ok: true,
   scenarioCount: results.length,
@@ -201,6 +231,8 @@ console.log(JSON.stringify({
     timelineHash: result.timelineHash,
     proofRunId: result.proofRunId,
     publicProofId: result.publicProofId,
+    publicLinkVerified: result.publicLinkVerified,
+    tamperedPublicLinkRejected: result.tamperedPublicLinkRejected,
     proofScore: result.proofScore,
     transitionQueueId: result.transitionQueueId,
     contentHash: result.contentHash,

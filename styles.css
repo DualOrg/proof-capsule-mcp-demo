@@ -159,6 +159,73 @@ body {
   display: none;
 }
 
+.public-verifier-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(220px, 0.7fr) minmax(260px, 1fr);
+  gap: 14px;
+  align-items: stretch;
+  margin-bottom: 16px;
+}
+
+.public-verifier-banner[hidden] {
+  display: none;
+}
+
+.public-verifier-banner h2 {
+  margin: 0;
+  font-size: clamp(24px, 3vw, 36px);
+  letter-spacing: 0;
+}
+
+.integrity-card,
+.integrity-row {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fbfb;
+  padding: 12px;
+  min-width: 0;
+}
+
+.integrity-card span,
+.integrity-row span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.integrity-card strong,
+.integrity-row strong {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
+.integrity-card p,
+.integrity-row p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.integrity-checks {
+  display: grid;
+  gap: 8px;
+}
+
+.integrity-row.verified {
+  border-color: #badfc9;
+  background: var(--mint);
+}
+
+.integrity-row.missing {
+  border-color: #f1ce7a;
+  background: var(--amber);
+}
+
 .proof-metrics,
 .proof-run-grid {
   display: grid;
@@ -465,6 +532,50 @@ h3 {
   margin-top: 16px;
 }
 
+body.public-mode .top-actions,
+body.public-mode .controls,
+body.public-mode .operations-grid,
+body.public-mode .proof .button-row,
+body.public-mode .proof button,
+body.public-mode #compareStack,
+body.public-mode #handoffStack,
+body.public-mode .operator-only,
+body.public-mode .output {
+  display: none;
+}
+
+body.public-mode .topbar {
+  justify-content: flex-start;
+}
+
+body.public-mode .shell {
+  width: min(1280px, calc(100vw - 32px));
+}
+
+body.public-mode .intro {
+  grid-template-columns: minmax(0, 1.5fr) minmax(260px, 0.7fr);
+}
+
+body.public-mode .workspace {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+
+body.public-mode .capsule {
+  grid-column: 1;
+}
+
+body.public-mode .proof {
+  grid-column: 2;
+}
+
+body.public-mode .proof-run {
+  border-color: #b8dade;
+}
+
+body.public-mode .proof-run-grid {
+  grid-template-columns: 0.9fr 1fr 1fr;
+}
+
 .workflow-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -591,7 +702,10 @@ pre {
 
 @media (max-width: 1100px) {
   .intro,
-  .workspace {
+  .workspace,
+  body.public-mode .intro,
+  body.public-mode .workspace,
+  .public-verifier-banner {
     grid-template-columns: 1fr;
   }
 
@@ -601,8 +715,14 @@ pre {
   .workflow-grid,
   .operations-grid,
   .proof-metrics,
-  .proof-run-grid {
+  .proof-run-grid,
+  body.public-mode .proof-run-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body.public-mode .capsule,
+  body.public-mode .proof {
+    grid-column: auto;
   }
 }
 
@@ -631,6 +751,7 @@ pre {
   .operations-grid,
   .proof-metrics,
   .proof-run-grid,
+  body.public-mode .proof-run-grid,
   .form-grid,
   .button-row {
     grid-template-columns: 1fr;

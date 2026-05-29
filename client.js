@@ -4,6 +4,7 @@ let currentWorkflow = null;
 let lastTransitionPlan = null;
 let compareBase = null;
 let lastProofRun = null;
+let publicMode = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -289,7 +290,8 @@ function renderProofRun(payload, outputTitle = "Proof run") {
     ["Proof", payload.public_proof_id || payload.public_verifier?.public_proof_id || payload.run_id || "-"],
     ["Decision", payload.summary?.decision || payload.capsule?.decision?.result || payload.public_verifier?.summary?.decision || "-"],
     ["Score", `${payload.proof_score?.score ?? "-"} / ${payload.proof_score?.max_score ?? 100}`],
-    ["Boundary", boundaryLabel]
+    ["Boundary", boundaryLabel],
+    ["Link", payload.link_integrity?.status || payload.public_verifier?.link_integrity?.status || "not checked"]
   ].map(([label, value]) => `
     <div class="proof-metric">
       <span>${escapeHtml(label)}</span>
@@ -334,6 +336,24 @@ function renderProofRun(payload, outputTitle = "Proof run") {
 
   $("outputTitle").textContent = outputTitle;
   $("output").textContent = JSON.stringify(payload, null, 2);
+}
+
+function renderPublicVerifierBanner(payload) {
+  const integrity = payload.link_integrity || {};
+  const checks = integrity.checks || [];
+  $("publicVerifierBanner").hidden = false;
+  $("publicVerifierTitle").textContent = payload.summary?.title || payload.capsule_id || "Verifier page";
+  $("publicVerifierStatement").textContent = payload.verifier_statement || "Read-only proof envelope.";
+  $("publicVerifierIntegrity").textContent = integrity.status || "not checked";
+  $("publicVerifierIntegrity").className = integrity.ok === false ? "warn-text" : integrity.verified ? "safe-text" : "";
+  $("publicVerifierAction").textContent = integrity.action || "";
+  $("publicVerifierChecks").innerHTML = checks.map((check) => `
+    <div class="integrity-row ${check.verifies ? "verified" : "missing"}">
+      <span>${escapeHtml(check.check.replaceAll("_", " "))}</span>
+      <strong>${escapeHtml(!check.supplied ? "not supplied" : check.verifies ? "matched" : "mismatch")}</strong>
+      <p>${escapeHtml(check.supplied ? check.received : `Expected ${check.expected}`)}</p>
+    </div>
+  `).join("");
 }
 
 function renderStatus(status) {
@@ -477,14 +497,22 @@ function scenarioFromProofPath(capsuleId = "") {
 async function loadPublicProofRoute() {
   const parts = window.location.pathname.split("/").filter(Boolean);
   if (parts[0] !== "proof") return false;
+  publicMode = true;
+  document.body.classList.add("public-mode");
   const capsuleId = decodeURIComponent(parts[1] || "");
   const params = new URLSearchParams(window.location.search);
   const requestedScenario = params.get("scenario") || scenarioFromProofPath(capsuleId);
+  const requestedContentHash = params.get("content_hash") || params.get("hash") || "";
   $("scenarioSelect").value = requestedScenario;
-  const payload = await jsonFetch(`/api/proof/public?scenario=${encodeURIComponent(requestedScenario)}&proof_id=${encodeURIComponent(capsuleId)}`);
+  const payload = await jsonFetch(`/api/proof/public?scenario=${encodeURIComponent(requestedScenario)}&proof_id=${encodeURIComponent(capsuleId)}&content_hash=${encodeURIComponent(requestedContentHash)}`);
   currentWorkflow = null;
+  document.title = `${payload.capsule_id} public proof`;
+  document.querySelector(".topbar h1").textContent = "Proof Capsule Verifier";
+  document.querySelector(".intro h2").textContent = "Read-only proof envelope with DUAL-gated writes disabled.";
+  document.querySelector(".intro .lede").textContent = "This public page re-derives the capsule, source checks, policy decision, workflow replay, and link integrity without exposing any write action.";
   renderCapsule(payload.capsule, "Public verifier page");
   renderProofRun(payload, "Public verifier page");
+  renderPublicVerifierBanner(payload);
   renderEvidenceVerification({ ok: payload.sections?.source_checks?.every((item) => item.status === "verified"), results: payload.sections?.source_checks || [] });
   renderTimeline({ events: payload.sections?.timeline || [] });
   await loadWorkflow(payload.capsule);

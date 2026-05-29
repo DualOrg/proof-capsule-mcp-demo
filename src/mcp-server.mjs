@@ -632,7 +632,13 @@ export function createMcpServer() {
         capsule: z.record(z.string(), z.unknown()).optional(),
         workflow_definition: z.record(z.string(), z.unknown()).optional(),
         endpoint: z.string().optional(),
-        base_url: z.string().optional()
+        base_url: z.string().optional(),
+        proof_id: z.string().optional(),
+        public_proof_id: z.string().optional(),
+        capsule_id: z.string().optional(),
+        id: z.string().optional(),
+        content_hash: z.string().optional(),
+        hash: z.string().optional()
       },
       annotations: READ_ONLY_ANNOTATIONS,
       _meta: TOOL_META

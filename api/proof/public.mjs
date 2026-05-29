@@ -14,7 +14,8 @@ export default async function handler(req, res) {
     const input = req.method === "GET"
       ? {
           scenario: url.searchParams.get("scenario") || undefined,
-          proof_id: url.searchParams.get("proof_id") || url.searchParams.get("id") || undefined
+          proof_id: url.searchParams.get("proof_id") || url.searchParams.get("id") || undefined,
+          content_hash: url.searchParams.get("content_hash") || url.searchParams.get("hash") || undefined
         }
       : await readBody(req);
     res.status(200).json(buildPublicVerifierPage({

@@ -179,7 +179,8 @@ async function handleApi(req, res, url) {
     if (req.method === "GET") {
       return sendJson(res, 200, buildPublicVerifierPage({
         scenario: url.searchParams.get("scenario") || undefined,
-        proof_id: url.searchParams.get("proof_id") || undefined,
+        proof_id: url.searchParams.get("proof_id") || url.searchParams.get("id") || undefined,
+        content_hash: url.searchParams.get("content_hash") || url.searchParams.get("hash") || undefined,
         base_url: `${url.protocol}//${url.host}`,
         endpoint: `${url.protocol}//${url.host}/mcp`
       }));
