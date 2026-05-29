@@ -38,6 +38,9 @@ function setCors(res) {
   res.setHeader("access-control-allow-origin", "*");
   res.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
   res.setHeader("access-control-allow-headers", "content-type, mcp-session-id");
+  res.setHeader("cache-control", "no-store, max-age=0, must-revalidate");
+  res.setHeader("pragma", "no-cache");
+  res.setHeader("expires", "0");
 }
 
 async function readBody(req) {
