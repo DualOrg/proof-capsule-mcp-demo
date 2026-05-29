@@ -24,15 +24,16 @@ Best first buyers:
 
 1. Open the universal proof capsule scenario.
 2. Show the SaaS Launch Desk: package readiness, tenant activation score, plans, connector readiness, and admin controls.
-3. Run the proof and inspect the proof room.
-4. Open the public verifier link and explain that public writes remain false.
-5. Point to DUAL object/template/state/integrity links.
-6. Show source cards with adapter labels:
+3. Show the Tenant Activation Gateway: billing, SSO, API-key preview, customer gateway, source adapter onboarding, and DUAL binding.
+4. Run the proof and inspect the proof room.
+5. Open the public verifier link and explain that public writes remain false.
+6. Point to DUAL object/template/state/integrity links.
+7. Show source cards with adapter labels:
    - Live DUAL: production reference for the canonical capsule.
    - Reference: structured hash/ref for demo use; tenant adapter required before production reliance.
    - Adapter needed: production source connector or signed feed must be added.
-7. Show the MCP handoff: read-safe proof tools plus operator-gated write tools.
-8. Close with the tenant onboarding plan and acceptance gates.
+8. Show the MCP handoff: read-safe proof tools plus operator-gated write tools.
+9. Close with the tenant onboarding and activation plans plus acceptance gates.
 
 ## Acceptance Gates
 
@@ -43,11 +44,12 @@ The pilot is accepted when:
 - Public verifier link integrity detects both pinned valid links and tampered links.
 - DUAL write path is operator-gated, public writes are false, and readback is performed after any approved write.
 - Connector readiness is explicit for every source: live, reference, or adapter needed.
+- Tenant activation artifacts are generated for billing, SSO, API credentials, customer gateway, live adapters, and DUAL binding without returning secrets.
 - Raw evidence remains in the customer source system or vault.
 
 ## What The Pilot Does Not Claim
 
-- It does not issue customer accounts, SSO sessions, API keys, invoices, or payment collection in the public demo.
+- It emits customer activation artifacts, but it does not capture payment, create public-demo SSO sessions, or return API secrets through browser/MCP/API responses.
 - It does not prove non-DUAL source facts live unless a tenant adapter or signed source feed is connected.
 - It does not transfer tokens, move funds, execute settlement, retire credits, or perform wallet actions.
 - It does not store raw evidence; it stores references, hashes, state, policy decisions, and DUAL anchors.

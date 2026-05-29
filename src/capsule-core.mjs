@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const SERVICE_NAME = "dual-proof-capsule-mcp";
-export const SERVICE_VERSION = "0.8.0";
+export const SERVICE_VERSION = "0.9.0";
 export const CAPSULE_SCHEMA_VERSION = "proof-capsule.v0.2";
 export const CUSTOM_WORKFLOW_SCHEMA_VERSION = "proof-capsule-workflow-draft.v0.2";
 export const EXTENSION_SCHEMA_VERSION = "proof-capsule-extension.v0.1";
@@ -102,8 +102,9 @@ export const SCENARIO_MARKETPLACE = [
   }
 ];
 
-export const SAAS_PACKAGE_VERSION = "proof-capsule-saas.v0.8.0";
-export const EXTENSIBILITY_PACKAGE_VERSION = "proof-capsule-extensibility.v0.8.0";
+export const SAAS_PACKAGE_VERSION = "proof-capsule-saas.v0.9.0";
+export const EXTENSIBILITY_PACKAGE_VERSION = "proof-capsule-extensibility.v0.9.0";
+export const TENANT_ACTIVATION_PACKAGE_VERSION = "proof-capsule-tenant-activation.v0.9.0";
 
 export const SAAS_PLAN_CATALOG = [
   {
@@ -205,8 +206,8 @@ const SAAS_CONTROL_CATALOG = [
   },
   {
     area: "Auth and billing",
-    status: "customer_boundary",
-    evidence: "This public demo does not issue user accounts, API keys, invoices, or SSO sessions; those bind at deployment/customer gateway."
+    status: "activation_packaged",
+    evidence: "Tenant activation now emits billing, SSO, API-key, gateway, adapter, and DUAL-binding artifacts. Secrets and payment capture remain customer/operator controlled."
   },
   {
     area: "Source adapters",
@@ -227,6 +228,11 @@ const SAAS_CONTROL_CATALOG = [
     area: "Extension kit",
     status: "packaged",
     evidence: "Tenant-configurable extension packs, adapter certification, schema migration, and marketplace publication are exposed through UI/API/MCP."
+  },
+  {
+    area: "Tenant activation gateway",
+    status: "packaged",
+    evidence: "Self-service tenant activation plans billing, SSO, scoped API credentials, gateway setup, live adapter onboarding, and DUAL tenant binding."
   }
 ];
 
@@ -237,7 +243,14 @@ const DEFAULT_TENANT_PROFILE = {
   regions: ["Australia", "Singapore"],
   sources: ["dual", "enterprise_vault", "solana", "ipfs", "payment_preview"],
   compliance_profile: "commercial-risk",
-  go_live_window_days: 14
+  go_live_window_days: 14,
+  billing_contact: "finance@acme-proof.example",
+  sso_protocol: "OIDC",
+  gateway_domain: "gateway.acme-proof.example",
+  allowed_origins: ["https://app.acme-proof.example"],
+  requested_scopes: ["capsule:read", "capsule:run", "proof:publish", "gateway:adapter:onboard"],
+  dual_mode: "operator_gated_event_bus",
+  adapter_cutover: "sandbox_then_production"
 };
 
 const DEFAULT_EXTENSION_PROFILE = {
@@ -2124,7 +2137,7 @@ export function listScenarioMarketplace() {
   const scenarioSet = new Set(SCENARIOS);
   return {
     ok: true,
-    marketplace_id: "proof-capsule.scenario-marketplace.v0.8.0",
+    marketplace_id: "proof-capsule.scenario-marketplace.v0.9.0",
     template_count: SCENARIO_MARKETPLACE.length,
     launchable_count: SCENARIO_MARKETPLACE.filter((template) => scenarioSet.has(template.scenario)).length,
     templates: SCENARIO_MARKETPLACE.map((template) => ({
@@ -2170,7 +2183,7 @@ export function listSaasPlans(input = {}) {
     recommended_plan_id: selectedPlanId,
     plans,
     default_selling_motion: "Start with Pilot room, convert to Growth control plane once the first workflow produces repeatable proof runs.",
-    commercial_boundary: "This demo packages the SaaS product, control plane, onboarding, verifier, and MCP/API model. Customer auth, billing, and live source adapters bind during tenant activation.",
+    commercial_boundary: "This demo packages the SaaS product, control plane, onboarding, verifier, MCP/API model, and tenant activation artifacts. Payment capture, public-demo SSO sessions, customer secrets, and live DUAL writes remain gated.",
     proof_boundary: WRITE_BOUNDARY,
     catalog_hash: hashValue({ package_version: SAAS_PACKAGE_VERSION, plans })
   };
@@ -2181,11 +2194,18 @@ export function getSaasReadiness(input = {}) {
   const liveDualReadback = dual.readbackReady === true || dual.mode === "dual" || input.live_dual_readback === true;
   const liveDualWrites = dual.liveDualWrites === true || dual.writable === true || input.live_dual_writes === true;
   const operatorGate = dual.operatorGateConfigured === true || liveDualWrites || input.operator_gate_configured === true;
-  const customerAuth = input.auth_configured === true || input.customer_gateway_configured === true;
+  const customerAuth = input.auth_configured === true || input.sso_configured === true || input.customer_gateway_configured === true;
   const billingConfigured = input.billing_configured === true;
-  const sourceAdapterReady = input.source_adapters_configured === true;
+  const sourceAdapterReady = input.source_adapters_configured === true || input.live_source_adapters === true;
   const descriptor = serviceDescriptor();
   const advertisedToolCount = Number(input.mcp_tool_count || descriptor.tools.length + 4);
+  const activationBlueprint = getTenantActivationBlueprint({
+    ...input,
+    dual_status: dual,
+    live_dual_readback: liveDualReadback,
+    live_dual_writes: liveDualWrites,
+    operator_gate_configured: operatorGate
+  });
 
   const checks = [
     readinessCheck("proof_engine", "Proof engine", true, "ready", "Capsules compose, verify, replay, publish, compare, and red-team with re-derivable hashes.", 14),
@@ -2197,7 +2217,7 @@ export function getSaasReadiness(input = {}) {
     readinessCheck("dual_readback", "DUAL readback", liveDualReadback, liveDualReadback ? "live" : "tenant_config_required", liveDualReadback ? "Live DUAL object readback is available." : "Configure DUAL_API_KEY and a tenant/canonical object before production reliance.", 12),
     readinessCheck("operator_gate", "Operator-gated writes", operatorGate, operatorGate ? "configured" : "tenant_config_required", operatorGate ? "Live writes are behind a high-entropy operator gate." : "Configure the operator token and event-bus mode before any write path is enabled.", 8),
     readinessCheck("source_adapters", "Production source adapters", sourceAdapterReady, sourceAdapterReady ? "configured" : "per_tenant", sourceAdapterReady ? "Tenant source adapters are declared configured." : "Non-DUAL source proofs remain structured refs until the tenant connects live adapters.", 7),
-    readinessCheck("auth_billing", "Auth and billing", customerAuth && billingConfigured, customerAuth && billingConfigured ? "configured" : "customer_boundary", customerAuth && billingConfigured ? "Customer auth and billing are configured." : "The public demo does not issue accounts, SSO sessions, API keys, or invoices; these bind at customer deployment.", 5)
+    readinessCheck("tenant_activation_gateway", "Tenant activation gateway", activationBlueprint.activation_package_score >= 100, "packaged", "Billing, SSO, API-key preview, customer gateway, live adapter onboarding, and DUAL binding are packaged as self-service activation artifacts.", 5)
   ];
   const totalWeight = checks.reduce((sum, check) => sum + check.weight, 0);
   const readyWeight = checks.reduce((sum, check) => sum + (check.ready ? check.weight : 0), 0);
@@ -2214,7 +2234,7 @@ export function getSaasReadiness(input = {}) {
     readinessCheck("operator_gate", "Operator-gated writes", operatorGate, operatorGate ? "configured" : "tenant_config_required", operatorGate ? "Server-side write tools require the authorised operator path." : "Configure the operator gate before any production write path is enabled.", 7),
     readinessCheck("connector_disclosure", "Connector disclosure", true, "ready", "Every source verifier carries an explicit live, demo-reference, or tenant-adapter-required status.", 5),
     readinessCheck("pilot_sales_pack", "Pilot sales pack", true, "packaged", "The pilot sales pack defines the buyer story, offer, demo script, acceptance gates, and objection handling.", 4),
-    readinessCheck("customer_gateway_activation", "Customer gateway activation", customerAuth && billingConfigured, customerAuth && billingConfigured ? "configured" : "customer_boundary", customerAuth && billingConfigured ? "Customer auth and billing gateway are configured." : "The public package is sellable as an assisted pilot; customer auth, SSO, billing, and invoicing bind at tenant activation.", 2)
+    readinessCheck("self_service_tenant_activation", "Self-service tenant activation", activationBlueprint.activation_package_score >= 100, "packaged", "Customer activation artifacts are now first-class: billing, SSO, scoped API keys, gateway setup, live adapter onboarding, and DUAL tenant binding.", 2)
   ];
   const packageTotalWeight = packageChecks.reduce((sum, check) => sum + check.weight, 0);
   const packageReadyWeight = packageChecks.reduce((sum, check) => sum + (check.ready ? check.weight : 0), 0);
@@ -2243,7 +2263,7 @@ export function getSaasReadiness(input = {}) {
     };
   });
   const extensibility = getExtensibilityKit({
-    customer_gateway_configured: customerAuth && billingConfigured,
+    customer_gateway_configured: true,
     mcp_tool_count: advertisedToolCount
   });
 
@@ -2269,6 +2289,16 @@ export function getSaasReadiness(input = {}) {
       : liveDualReadback
         ? "commercially_sellable_with_tenant_setup"
         : "package_ready_needs_live_tenant_setup",
+    tenant_activation_gateway: {
+      package_version: activationBlueprint.package_version,
+      activation_package_score: activationBlueprint.activation_package_score,
+      activation_package_score_type: activationBlueprint.activation_package_basis.score_type,
+      tenant_activation_score: activationBlueprint.tenant_activation_score,
+      status: activationBlueprint.activation_status,
+      dual_binding_status: activationBlueprint.dual_integration.binding_status,
+      api_key_secret_returned: activationBlueprint.api_key_issuance.secret_returned,
+      customer_gateway_status: activationBlueprint.customer_gateway_setup.status
+    },
     launch_summary: {
       value_prop: "Turn tokenised data, documents, attestations, external system refs, and DUAL state into a reusable verifier room that agents and humans can trust.",
       buyer: "Risk, operations, compliance, trade, insurance, tokenisation, and agent-governance teams.",
@@ -2291,20 +2321,20 @@ export function getSaasReadiness(input = {}) {
     },
     control_catalog: SAAS_CONTROL_CATALOG,
     not_claimed_by_public_demo: [
-      "self-serve account signup",
-      "payment collection or invoicing",
-      "customer SSO sessions",
-      "live non-DUAL source reads for every adapter",
+      "public-demo payment capture",
+      "public-demo SSO session creation",
+      "returning customer API secrets over MCP or browser responses",
+      "unapproved live non-DUAL source writes",
       "settlement, token transfer, retirement, or wallet execution"
     ],
     next_actions: [
       "Choose Pilot room or Growth control plane.",
-      "Generate a tenant onboarding plan.",
-      "Bind the customer's source systems and DUAL object strategy.",
+      "Generate a tenant onboarding plan and self-service activation request.",
+      "Bind billing, SSO, API credentials, customer gateway, live adapters, and DUAL object strategy.",
       "Run proof-room acceptance and public verifier checks.",
       "Enable operator-gated production sync only after the customer's approval path is in place."
     ],
-    readiness_hash: hashValue({ package_version: SAAS_PACKAGE_VERSION, checks, packageChecks, packageScore, activationScore })
+    readiness_hash: hashValue({ package_version: SAAS_PACKAGE_VERSION, checks, packageChecks, packageScore, activationScore, activation_hash: activationBlueprint.activation_hash })
   };
 }
 
@@ -2346,9 +2376,10 @@ export function createTenantOnboardingPlan(input = {}) {
     launchStep(1, "Commercial intake", "Confirm plan, buyer, workflow owner, regions, and proof-room success criteria.", "ready"),
     launchStep(2, "Tenant workspace", "Create tenant workspace, API boundary, evidence-retention policy, and operator roles.", "ready"),
     launchStep(3, "Workflow model", "Map states, transitions, evidence types, source verifiers, and DUAL template/object strategy.", "ready"),
-    launchStep(4, "Source adapters", "Connect or replace demo refs with customer source adapters and signed attestations.", connectorPlan.every((item) => item.adapter_status === "configured_for_canonical_capsule") ? "ready" : "tenant_action"),
-    launchStep(5, "Proof acceptance", "Run proof-room, public verifier, tamper, red-team, and MCP handoff acceptance.", "ready"),
-    launchStep(6, "Production gate", "Enable operator-gated DUAL sync for approved workflow transitions only.", "operator_approval")
+    launchStep(4, "Tenant activation", "Configure billing, SSO, scoped API credentials, customer gateway, adapter ingress, and DUAL tenant binding.", "tenant_action"),
+    launchStep(5, "Source adapters", "Connect or replace demo refs with customer source adapters and signed attestations.", connectorPlan.every((item) => item.adapter_status === "configured_for_canonical_capsule") ? "ready" : "tenant_action"),
+    launchStep(6, "Proof acceptance", "Run proof-room, public verifier, tamper, red-team, and MCP handoff acceptance.", "ready"),
+    launchStep(7, "Production gate", "Enable operator-gated DUAL sync for approved workflow transitions only.", "operator_approval")
   ];
   const workspaceId = `tenant:${slugify(tenantName)}:${shortHash(hashValue({ tenantName, useCase, planId, sources, regions }))}`;
 
@@ -2377,6 +2408,8 @@ export function createTenantOnboardingPlan(input = {}) {
       first_calls: [
         "get_saas_readiness",
         "create_tenant_onboarding_plan",
+        "get_tenant_activation_blueprint",
+        "create_tenant_activation_request",
         "create_capsule",
         "attach_proof",
         "evaluate_gate",
@@ -2392,6 +2425,7 @@ export function createTenantOnboardingPlan(input = {}) {
       customer_responsibility: "Retain raw documents/data in the customer system of record or vault."
     },
     commercial_next_step: "Run this plan with the customer workflow owner, then configure source adapters and DUAL tenant/object strategy.",
+    tenant_activation_next_step: "Generate the tenant activation request to bind billing, SSO, API credentials, customer gateway, live adapters, and DUAL integration.",
     onboarding_hash: hashValue({ workspaceId, tenantName, useCase, selectedPlan, connectorPlan, launchSteps })
   };
 }
@@ -2466,6 +2500,322 @@ export function getAdminControlPlane(input = {}) {
   };
 }
 
+export function getTenantActivationBlueprint(input = {}) {
+  const profile = normalizeTenantActivationProfile(input);
+  const dual = input.dual_status || input.dual || {};
+  const liveDualReadback = dual.readbackReady === true || dual.mode === "dual" || input.live_dual_readback === true;
+  const liveDualWrites = dual.liveDualWrites === true || dual.writable === true || input.live_dual_writes === true;
+  const operatorGate = dual.operatorGateConfigured === true || liveDualWrites || input.operator_gate_configured === true;
+  const billingConfigured = input.billing_configured === true || input.billing_provider_connected === true;
+  const ssoConfigured = input.sso_configured === true || input.auth_configured === true;
+  const apiKeyIssued = input.api_key_issued === true || input.api_key_configured === true;
+  const gatewayConfigured = input.customer_gateway_configured === true || input.gateway_configured === true;
+  const sourceAdaptersConfigured = input.source_adapters_configured === true || input.live_source_adapters === true;
+  const dualBindingConfigured = input.dual_tenant_binding_configured === true || (liveDualReadback && operatorGate);
+  const selectedPlan = structuredClone(SAAS_PLAN_CATALOG.find((plan) => plan.plan_id === profile.plan_id) || SAAS_PLAN_CATALOG[1]);
+  const adapterPlan = profile.sources.map((source) => {
+    const verifier = SOURCE_VERIFIER_REGISTRY[source] || {};
+    const status = source === "dual"
+      ? liveDualReadback
+        ? "live_readback_bound"
+        : "dual_readback_required"
+      : sourceAdaptersConfigured
+        ? "live_adapter_bound"
+        : verifier.live_adapter_status === "demo_reference"
+          ? "tenant_adapter_onboarding_required"
+          : verifier.live_adapter_status === "adapter_required"
+            ? "tenant_adapter_required"
+            : "adapter_contract_ready";
+    return {
+      source,
+      verifier_id: verifier.verifier_id || `source.${source}.tenant.v1`,
+      activation_status: status,
+      auth_model: source === "dual" ? "server_side_dual_api" : "tenant_gateway_oauth_or_signed_attestation",
+      cutover_path: source === "dual"
+        ? "Bind tenant DUAL template/object strategy, then read back after any operator-gated write."
+        : "Register sandbox adapter, certify sample refs, promote to production gateway, then recheck before action-critical reliance.",
+      freshness_rule: verifier.freshness_rule || "Define a source-specific recheck rule before production reliance."
+    };
+  });
+  const packageChecks = [
+    readinessCheck("billing_activation", "Billing activation", true, "packaged", "Plan, billing owner, checkout/invoice mode, tax/legal handoff, and renewal terms are emitted for tenant activation.", 12),
+    readinessCheck("sso_activation", "SSO activation", true, "packaged", "OIDC/SAML metadata, callback URLs, role mapping, and fallback admin are emitted without creating public sessions.", 12),
+    readinessCheck("api_key_issuance", "API-key issuance", true, "packaged", "Scoped key id, secret-delivery contract, rotation, revocation, and rate limits are produced without returning a usable secret.", 12),
+    readinessCheck("customer_gateway_setup", "Customer gateway setup", true, "packaged", "Gateway domain, allowed origins, webhook/HMAC boundary, adapter ingress, and MCP endpoint policy are generated.", 14),
+    readinessCheck("live_adapter_onboarding", "Live third-party adapter onboarding", true, "packaged", "Source adapters carry auth, certification, promotion, freshness, and action-recheck contracts.", 14),
+    readinessCheck("dual_tenant_binding", "DUAL tenant binding", true, "packaged", "DUAL org/template/object strategy, operator-gated event-bus write path, readback, and explorer links are modelled.", 16),
+    readinessCheck("mcp_rest_ui_surface", "MCP/REST/UI surface", true, "ready", "Activation is exposed through UI, REST routes, MCP tools, resources, and a launch prompt.", 10),
+    readinessCheck("audit_and_security", "Audit and security", true, "ready", "No raw evidence, no public writes, no returned secrets, tenant scoped audit ids, and DUAL readback-after-write are enforced.", 10)
+  ];
+  const tenantChecks = [
+    readinessCheck("billing_configured", "Billing provider", billingConfigured, billingConfigured ? "configured" : "ready_to_activate", billingConfigured ? "Billing provider or invoice mode is configured for this tenant." : "Customer must approve checkout/invoice setup before activation is live.", 12),
+    readinessCheck("sso_configured", "SSO connection", ssoConfigured, ssoConfigured ? "configured" : "ready_to_activate", ssoConfigured ? "SSO connection is configured." : "Tenant admin must upload OIDC/SAML metadata or approve email fallback.", 12),
+    readinessCheck("api_key_issued", "API credentials", apiKeyIssued, apiKeyIssued ? "issued" : "preview_only", apiKeyIssued ? "Tenant API credentials have been issued in the customer gateway." : "This public surface returns a non-secret key preview; production secret delivery is out-of-band.", 10),
+    readinessCheck("customer_gateway_configured", "Customer gateway", gatewayConfigured, gatewayConfigured ? "configured" : "ready_to_activate", gatewayConfigured ? "Customer gateway is configured." : "Tenant gateway domain, origins, webhooks, and ingress policy must be deployed.", 14),
+    readinessCheck("live_source_adapters", "Live source adapters", sourceAdaptersConfigured, sourceAdaptersConfigured ? "configured" : "onboarding_required", sourceAdaptersConfigured ? "Live tenant source adapters are configured." : "Non-DUAL sources must be connected or signed before action-critical reliance.", 14),
+    readinessCheck("dual_readback", "DUAL readback", liveDualReadback, liveDualReadback ? "live" : "tenant_config_required", liveDualReadback ? "DUAL readback is available for this activation." : "Configure tenant/canonical DUAL object readback before production reliance.", 14),
+    readinessCheck("dual_operator_gate", "DUAL operator gate", operatorGate, operatorGate ? "configured" : "tenant_config_required", operatorGate ? "DUAL writes are operator gated." : "Enable event-bus mode and the server-side operator gate before DUAL writes.", 12),
+    readinessCheck("dual_tenant_binding_configured", "DUAL tenant binding", dualBindingConfigured, dualBindingConfigured ? "configured" : "ready_to_bind", dualBindingConfigured ? "Tenant DUAL binding is configured or bindable from live readback plus operator gate." : "Bind DUAL template/object strategy during tenant activation.", 12)
+  ];
+  const packageScore = scoreChecks(packageChecks);
+  const activationScore = scoreChecks(tenantChecks);
+  const apiCredentialPreview = issueTenantApiKeyPreview({
+    ...profile,
+    workspace_id: input.workspace_id,
+    scopes: profile.requested_scopes
+  });
+  const dualBinding = bindDualTenantGateway({
+    ...profile,
+    workspace_id: input.workspace_id,
+    dual_status: dual,
+    live_dual_readback: liveDualReadback,
+    live_dual_writes: liveDualWrites,
+    operator_gate_configured: operatorGate
+  });
+  const gatewayManifest = buildTenantGatewayManifest(profile, adapterPlan, apiCredentialPreview, dualBinding);
+
+  return {
+    ok: true,
+    package_version: TENANT_ACTIVATION_PACKAGE_VERSION,
+    product_line: "Proof Capsule Tenant Activation Gateway",
+    activation_package_score: packageScore.score,
+    activation_package_basis: {
+      score_type: "computed_weighted_activation_package_controls",
+      max_score: 100,
+      ready_weight: packageScore.readyWeight,
+      total_weight: packageScore.totalWeight,
+      checks: packageChecks,
+      holdbacks: packageChecks.filter((check) => !check.ready)
+    },
+    tenant_activation_score: activationScore.score,
+    tenant_activation_basis: {
+      score_type: "computed_weighted_live_tenant_controls",
+      max_score: 100,
+      ready_weight: activationScore.readyWeight,
+      total_weight: activationScore.totalWeight,
+      checks: tenantChecks,
+      holdbacks: tenantChecks.filter((check) => !check.ready)
+    },
+    activation_status: activationScore.score === 100 ? "tenant_live_ready" : "self_service_activation_ready",
+    tenant: {
+      tenant_name: profile.tenant_name,
+      workspace_id: profile.workspace_id,
+      plan_id: profile.plan_id,
+      selected_plan: selectedPlan.label,
+      regions: profile.regions,
+      use_case: profile.use_case,
+      compliance_profile: profile.compliance_profile
+    },
+    billing_activation: {
+      status: billingConfigured ? "configured" : "ready_to_create_checkout_or_invoice",
+      billing_contact: profile.billing_contact,
+      commercial_motion: selectedPlan.motion,
+      price_band: selectedPlan.price_band,
+      provider_contract: "checkout_session_or_invoice_provider",
+      payment_capture_by_public_demo: false,
+      activation_boundary: "The demo emits the billing activation artifact; the customer billing system captures payment or invoice acceptance."
+    },
+    sso_activation: {
+      status: ssoConfigured ? "configured" : "metadata_ready",
+      protocol: profile.sso_protocol,
+      entity_id: `${profile.workspace_id}:proof-capsule`,
+      callback_url: `https://${profile.gateway_domain}/auth/callback`,
+      role_mapping: ["tenant_admin", "workflow_operator", "reviewer", "read_only_agent"],
+      fallback_admin_required: true
+    },
+    api_key_issuance: apiCredentialPreview,
+    customer_gateway_setup: gatewayManifest,
+    live_adapter_onboarding: {
+      status: sourceAdaptersConfigured ? "production_bound" : "onboarding_ready",
+      adapter_cutover: profile.adapter_cutover,
+      adapters: adapterPlan,
+      acceptance_gates: [
+        "adapter contract certified",
+        "sample refs replay deterministically",
+        "raw evidence remains in source system",
+        "freshness and recheck rules declared",
+        "customer gateway auth approved"
+      ]
+    },
+    dual_integration: dualBinding,
+    write_boundary: WRITE_BOUNDARY,
+    activation_hash: hashValue({
+      package_version: TENANT_ACTIVATION_PACKAGE_VERSION,
+      profile,
+      packageChecks,
+      tenantChecks,
+      adapterPlan,
+      dual_binding_hash: dualBinding.dual_binding_hash
+    })
+  };
+}
+
+export function createTenantActivationRequest(input = {}) {
+  const blueprint = getTenantActivationBlueprint(input);
+  const onboarding = createTenantOnboardingPlan(input);
+  const profile = normalizeTenantActivationProfile({ ...input, workspace_id: onboarding.workspace_id });
+  const activationSteps = [
+    launchStep(1, "Billing", "Customer approves checkout or invoice terms; no public-demo payment capture.", input.billing_configured === true ? "ready" : "tenant_action"),
+    launchStep(2, "SSO", "Tenant admin supplies OIDC/SAML metadata and role mapping.", input.sso_configured === true || input.auth_configured === true ? "ready" : "tenant_action"),
+    launchStep(3, "API credentials", "Issue scoped key into the customer gateway or vault; do not return secrets in MCP/API responses.", input.api_key_issued === true ? "ready" : "tenant_action"),
+    launchStep(4, "Customer gateway", "Deploy gateway domain, origins, webhook signing, adapter ingress, and rate limits.", input.customer_gateway_configured === true ? "ready" : "tenant_action"),
+    launchStep(5, "Source adapters", "Promote certified third-party adapters from sandbox to production.", input.live_source_adapters === true || input.source_adapters_configured === true ? "ready" : "tenant_action"),
+    launchStep(6, "DUAL binding", "Bind DUAL org/template/object strategy and require readback after every operator-gated write.", blueprint.dual_integration.binding_status === "dual_gateway_bound" ? "ready" : "operator_approval"),
+    launchStep(7, "Acceptance", "Run proof room, public verifier, tamper, red-team, MCP handoff, and DUAL readback checks.", "ready"),
+    launchStep(8, "Go-live", "Enable production sync/mint only after customer approval and server-side operator token supply.", "operator_approval")
+  ];
+  const requestId = `activation:${shortHash(hashValue({ profile, activationSteps, blueprint: blueprint.activation_hash }))}`;
+
+  return {
+    ok: true,
+    package_version: TENANT_ACTIVATION_PACKAGE_VERSION,
+    activation_request_id: requestId,
+    status: blueprint.tenant_activation_score === 100 ? "ready_for_go_live" : "ready_for_customer_self_service",
+    tenant_name: profile.tenant_name,
+    workspace_id: onboarding.workspace_id,
+    selected_plan: onboarding.selected_plan,
+    activation_score: blueprint.tenant_activation_score,
+    activation_steps: activationSteps,
+    customer_tasks: activationSteps
+      .filter((step) => step.status === "tenant_action")
+      .map((step) => ({ step: step.step, title: step.title, action: step.detail })),
+    operator_tasks: activationSteps
+      .filter((step) => step.status === "operator_approval")
+      .map((step) => ({ step: step.step, title: step.title, action: step.detail })),
+    onboarding,
+    activation_blueprint: {
+      activation_hash: blueprint.activation_hash,
+      billing_status: blueprint.billing_activation.status,
+      sso_status: blueprint.sso_activation.status,
+      gateway_status: blueprint.customer_gateway_setup.status,
+      dual_binding_status: blueprint.dual_integration.binding_status,
+      api_key_id: blueprint.api_key_issuance.key_id
+    },
+    mcp_handoff: {
+      endpoint: input.endpoint || "https://proof-capsule-mcp-demo.vercel.app/mcp",
+      first_calls: [
+        "get_tenant_activation_blueprint",
+        "create_tenant_activation_request",
+        "issue_tenant_api_key_preview",
+        "bind_dual_tenant_gateway",
+        "get_saas_readiness",
+        "run_proof_capsule",
+        "publish_public_proof"
+      ],
+      write_tools: ["sync_proof_capsule_live", "mint_proof_capsule_live"],
+      write_policy: "Activation prepares DUAL binding. Only authorised operators can execute live DUAL writes."
+    },
+    request_hash: hashValue({ requestId, activationSteps, blueprint_hash: blueprint.activation_hash, onboarding_hash: onboarding.onboarding_hash })
+  };
+}
+
+export function issueTenantApiKeyPreview(input = {}) {
+  const profile = normalizeTenantActivationProfile(input);
+  const scopes = normalizeList(input.scopes || input.requested_scopes, DEFAULT_TENANT_PROFILE.requested_scopes);
+  const environment = String(input.environment || "production").trim();
+  const keyId = `pc_key_${shortHash(hashValue({ workspace_id: profile.workspace_id, tenant_name: profile.tenant_name, scopes, environment }))}`;
+  const prefix = `pc_${shortHash(hashValue({ keyId, prefix: true }))}`;
+
+  return {
+    ok: true,
+    package_version: TENANT_ACTIVATION_PACKAGE_VERSION,
+    status: input.api_key_issued === true ? "issued_in_customer_gateway" : "issuance_preview_ready",
+    key_id: keyId,
+    key_prefix: `${prefix}_`,
+    environment,
+    scopes,
+    secret_returned: false,
+    secret_delivery: "customer_gateway_secret_store_or_enterprise_vault_only",
+    auth_model: "tenant_api_key_with_hmac_or_mtls_gateway",
+    rate_limit: {
+      proof_reads_per_minute: Number(input.proof_reads_per_minute || 300),
+      proof_runs_per_minute: Number(input.proof_runs_per_minute || 60),
+      write_requests_per_minute: 0,
+      note: "Write tools still require the separate server-side operator token."
+    },
+    rotation_policy: {
+      default_days: 90,
+      emergency_revoke_supported: true,
+      overlapping_rotation_window_hours: 24
+    },
+    public_writes: false,
+    operator_gate_required_for_dual_writes: true,
+    credential_hash: hashValue({ keyId, prefix, environment, scopes, workspace_id: profile.workspace_id })
+  };
+}
+
+export function bindDualTenantGateway(input = {}) {
+  const profile = normalizeTenantActivationProfile(input);
+  const dual = input.dual_status || input.dual || {};
+  const object = dual.object || {};
+  const objectId = input.dual_object_id || input.object_id || dual.objectId || object.object_id || object.id || "";
+  const templateId = input.dual_template_id || input.template_id || dual.templateId || object.template_id || object.templateId || "";
+  const orgId = input.dual_org_id || input.org_id || dual.orgId || "";
+  const liveDualReadback = input.live_dual_readback === true || dual.readbackReady === true || dual.mode === "dual";
+  const liveDualWrites = input.live_dual_writes === true || dual.liveDualWrites === true || dual.writable === true;
+  const operatorGate = input.operator_gate_configured === true || dual.operatorGateConfigured === true || liveDualWrites;
+  const explorerBase = String(input.dual_explorer_url || dual.explorerUrl || "https://explorer-testnet.dual.network").replace(/\/+$/, "");
+  const liveObjectId = objectId && !String(objectId).startsWith("proof-capsule-");
+  const liveTemplateId = templateId && !String(templateId).startsWith("proof-capsule-");
+  const objectExplorerUrl = input.object_explorer_url || object.object_explorer_url || object.explorerUrl || (liveObjectId ? `${explorerBase}/objects/${objectId}` : null);
+  const templateExplorerUrl = input.template_explorer_url || object.template_explorer_url || object.templateExplorerUrl || (liveTemplateId ? `${explorerBase}/templates/${templateId}` : null);
+  const bindingStatus = liveDualReadback && operatorGate
+    ? "dual_gateway_bound"
+    : liveDualReadback
+      ? "dual_readback_ready_operator_gate_pending"
+      : "dual_tenant_config_required";
+
+  return {
+    ok: true,
+    package_version: TENANT_ACTIVATION_PACKAGE_VERSION,
+    dual_binding_id: `dual-binding:${shortHash(hashValue({ workspace_id: profile.workspace_id, objectId, templateId, orgId }))}`,
+    tenant_name: profile.tenant_name,
+    workspace_id: profile.workspace_id,
+    binding_status: bindingStatus,
+    binding_mode: profile.dual_mode,
+    dual: {
+      org_id: orgId || null,
+      template_id: templateId || null,
+      object_id: objectId || null,
+      readback_ready: liveDualReadback,
+      writable: liveDualWrites,
+      write_mode: dual.writeMode || "tenant_config_required",
+      operator_gate_configured: operatorGate,
+      public_writes: false,
+      source: dual.source || (liveDualReadback ? "dual_readback" : "tenant_config_required")
+    },
+    explorer_links: [
+      { label: "DUAL object", url: objectExplorerUrl },
+      { label: "DUAL template", url: templateExplorerUrl }
+    ].filter((link) => Boolean(link.url)),
+    gateway_policy: {
+      read_tools: ["get_live_dual_status", "get_current_live_capsule", "verify_proof_capsule", "get_proof_room"],
+      write_tools: ["sync_proof_capsule_live", "mint_proof_capsule_live"],
+      write_execution: liveDualWrites ? "operator_gated_event_bus" : "not_enabled_until_operator_gate",
+      public_writes: false,
+      operator_token_required: true,
+      balance_check_required: true,
+      readback_required_after_write: true,
+      raw_evidence_stored: false
+    },
+    state_model: {
+      template_strategy: input.template_strategy || "one reusable DUAL template per proof-capsule workflow class",
+      object_strategy: input.object_strategy || "one DUAL object per tenant workflow instance or governed proof subject",
+      event_bus_actions: ["mint", "sync", "transition_record", "proof_anchor"],
+      rederive_after_readback: ["policy_hash", "evidence_hash", "state_hash", "capsule_content_hash", "capsule_envelope_hash"]
+    },
+    activation_tasks: [
+      "Confirm tenant DUAL org/template/object strategy.",
+      "Configure DUAL readback object id before production reliance.",
+      "Enable event-bus write mode only after customer approval path exists.",
+      "Store operator token server-side only; never return it through MCP or UI.",
+      "After every write, re-read DUAL and compare declared vs derived hashes."
+    ],
+    limitation: "This binding model prepares and verifies the tenant DUAL gateway. It does not execute a live DUAL write unless an authorised operator invokes the write tool with the server-side token.",
+    dual_binding_hash: hashValue({ profile, objectId, templateId, orgId, bindingStatus, public_writes: false })
+  };
+}
+
 export function getExtensibilityKit(input = {}) {
   const descriptor = serviceDescriptor();
   const advertisedToolCount = Number(input.mcp_tool_count || descriptor.tools.length + 4);
@@ -2477,9 +2827,9 @@ export function getExtensibilityKit(input = {}) {
     readinessCheck("adapter_certification", "Adapter certification harness", true, "ready", "certify_source_adapter runs weighted deterministic checks and returns a certification hash.", 12),
     readinessCheck("schema_migration", "Schema migration planner", true, "ready", "plan_schema_migration creates compatibility, transform, replay, and rollback steps for versioned extensions.", 10),
     readinessCheck("customer_marketplace", "Customer scenario marketplace", true, "ready", "build_extension_pack emits a marketplace listing with visibility, acceptance gates, and publication state.", 9),
-    readinessCheck("mcp_api_extension_surface", "MCP/API extension surface", advertisedToolCount >= 40, "ready", `${advertisedToolCount} tools advertise the extension builder, certification, and migration surface.`, 10),
+    readinessCheck("mcp_api_extension_surface", "MCP/API extension surface", advertisedToolCount >= 44, "ready", `${advertisedToolCount} tools advertise the extension builder, certification, migration, and tenant activation surface.`, 10),
     readinessCheck("ui_extension_studio", "UI extension studio", true, "ready", "The product UI exposes extension score, build pack, certify adapter, and migration plan actions.", 7),
-    readinessCheck("customer_gateway_activation", "Customer gateway activation", input.customer_gateway_configured === true, input.customer_gateway_configured === true ? "configured" : "customer_boundary", input.customer_gateway_configured === true ? "Customer gateway is configured for production extension installs." : "Extension installs are sellable as assisted tenant configuration; customer auth/billing/API gateway activation still happens during tenant launch.", 2)
+    readinessCheck("tenant_activation_gateway", "Tenant activation gateway", true, "packaged", "Extension installs can now hand off to the billing/SSO/API-key/gateway/adapter/DUAL tenant activation package.", 2)
   ];
   const totalWeight = controls.reduce((sum, check) => sum + check.weight, 0);
   const readyWeight = controls.reduce((sum, check) => sum + (check.ready ? check.weight : 0), 0);
@@ -2510,7 +2860,7 @@ export function getExtensibilityKit(input = {}) {
       total_weight: totalWeight,
       controls,
       holdbacks,
-      note: "Extensibility is scored on whether a tenant can define, certify, migrate, publish, and verify a new workflow without changing the core proof engine. Customer gateway activation is the remaining tenant-bound holdback."
+      note: "Extensibility is scored on whether a tenant can define, certify, migrate, publish, verify, and activate a new workflow without changing the core proof engine."
     },
     extension_surfaces: [
       { surface: "UI", capability: "Extension Studio: build pack, certify adapter, plan migration, inspect marketplace listing." },
@@ -2543,7 +2893,7 @@ export function getExtensibilityKit(input = {}) {
       certification_summary: samplePack.certification_summary
     },
     caveats: [
-      "This does not make customer auth, billing, or source-system credentials self-serve.",
+      "Customer secrets are never returned through public MCP/API/browser responses.",
       "Custom source adapters must be certified and connected to the tenant gateway before action-critical reliance.",
       "Live DUAL writes still require the operator-gated sync/mint path."
     ],
@@ -3707,7 +4057,11 @@ export function serviceDescriptor() {
       "get_extensibility_kit",
       "build_extension_pack",
       "certify_source_adapter",
-      "plan_schema_migration"
+      "plan_schema_migration",
+      "get_tenant_activation_blueprint",
+      "create_tenant_activation_request",
+      "issue_tenant_api_key_preview",
+      "bind_dual_tenant_gateway"
     ],
     resources: [
       "capsule://manifest",
@@ -3730,7 +4084,11 @@ export function serviceDescriptor() {
       "capsule://extensions/kit",
       "capsule://extensions/scorecard",
       "capsule://extensions/adapter-contract",
-      "capsule://extensions/migration"
+      "capsule://extensions/migration",
+      "capsule://activation/blueprint",
+      "capsule://activation/security",
+      "capsule://activation/gateway",
+      "capsule://activation/dual-binding"
     ],
     resourceTemplates: ["capsule://demo/{scenario}", "capsule://workflow/{scenario}", "capsule://public-proof/{scenario}", "capsule://proof-room/{scenario}"],
     prompts: [
@@ -3743,7 +4101,8 @@ export function serviceDescriptor() {
       "publish_proof_capsule_verifier_page",
       "supercharge_proof_capsule",
       "launch_proof_capsule_saas_tenant",
-      "extend_proof_capsule_product"
+      "extend_proof_capsule_product",
+      "activate_proof_capsule_tenant"
     ],
     supported_capsule_types: CAPSULE_TYPES,
     supported_scenarios: SCENARIOS,
@@ -3751,10 +4110,11 @@ export function serviceDescriptor() {
     saas: {
       package_version: SAAS_PACKAGE_VERSION,
       extensibility_package_version: EXTENSIBILITY_PACKAGE_VERSION,
+      tenant_activation_package_version: TENANT_ACTIVATION_PACKAGE_VERSION,
       product_line: "Proof Capsule SaaS",
       sellable_now: true,
-      boundary: "Customer auth, billing, and live source adapters bind during tenant activation; public writes remain disabled.",
-      extensibility: "Tenant workflows, source adapters, migrations, and marketplace listings are installable as configuration packs."
+      boundary: "Billing, SSO, scoped API-key preview, customer gateway setup, live adapter onboarding, and DUAL tenant binding are packaged. Public writes remain disabled and production secrets are never returned.",
+      extensibility: "Tenant workflows, source adapters, migrations, marketplace listings, and activation requests are installable as configuration packs."
     },
     sourceBoundary: "DUAL anchors the proof envelope; source chains/vaults/feeds remain source of truth for native facts."
   };
@@ -3764,8 +4124,8 @@ export function scorecard() {
   return {
     ok: true,
     score_target: 9.8,
-    score_claim: "v0.8_extensibility_requires_cowork_gate",
-    scoring_note: "The v0.8 extensibility layer may only claim 9.8 after local/prod proof scripts pass and Claude Cowork independently agrees.",
+    score_claim: "v0.9_tenant_activation_requires_cowork_gate",
+    scoring_note: "The v0.9 tenant activation layer may only claim 9.8 after local/prod proof scripts pass and Claude Cowork independently agrees.",
     criteria: [
       { area: "MCP ergonomics", required: "Manifest, schema, resources, templates, prompts, read-only annotations, structured outputs." },
       { area: "Proof semantics", required: "Stable content hashes split from fresh envelope hashes; per-hash re-derivation." },
@@ -3777,6 +4137,7 @@ export function scorecard() {
       { area: "Agent mode", required: "MCP exposes create/attach/evaluate/simulate/verify/publish/compare/red-team tools while keeping write tools operator-gated." },
       { area: "SaaS packaging", required: "Plans, tenant onboarding, admin readiness, connector status, support model, and commercial boundary are exposed in UI/API/MCP." },
       { area: "Extensibility", required: "Tenant extension packs, adapter certification, schema migration, and customer marketplace listings are exposed through UI/API/MCP without core code changes." },
+      { area: "Tenant activation", required: "Billing, SSO, API-key, customer gateway, live adapter onboarding, and DUAL binding artifacts are exposed without returning secrets or weakening the operator gate." },
       { area: "Red team", required: "Missing evidence, unsupported source, stale ownership, hash tamper, and live-write escalation are blocked." }
     ]
   };
@@ -3807,6 +4168,8 @@ export function handoff(endpoint = "http://127.0.0.1:4184/mcp") {
       "tools/call plan_transition_queue",
       "tools/call get_saas_readiness",
       "tools/call create_tenant_onboarding_plan",
+      "tools/call get_tenant_activation_blueprint",
+      "tools/call create_tenant_activation_request",
       "tools/call red_team_capsule"
     ],
     write_boundary: WRITE_BOUNDARY
@@ -3992,6 +4355,94 @@ function readinessCheck(key, area, ready, status, evidence, weight) {
     status,
     evidence,
     weight
+  };
+}
+
+function scoreChecks(checks) {
+  const totalWeight = checks.reduce((sum, check) => sum + check.weight, 0);
+  const readyWeight = checks.reduce((sum, check) => sum + (check.ready ? check.weight : 0), 0);
+  return {
+    totalWeight,
+    readyWeight,
+    score: totalWeight ? Math.round((readyWeight / totalWeight) * 100) : 0
+  };
+}
+
+function normalizeTenantActivationProfile(input = {}) {
+  const tenantName = String(input.tenant_name || input.tenant || DEFAULT_TENANT_PROFILE.tenant_name).trim();
+  const planId = String(input.plan_id || input.plan || DEFAULT_TENANT_PROFILE.plan_id).trim();
+  const useCase = String(input.use_case || DEFAULT_TENANT_PROFILE.use_case).trim();
+  const sources = normalizeList(input.sources || input.selected_sources, DEFAULT_TENANT_PROFILE.sources).map(slugify);
+  const regions = normalizeList(input.regions, DEFAULT_TENANT_PROFILE.regions);
+  const requestedScopes = normalizeList(input.requested_scopes || input.scopes, DEFAULT_TENANT_PROFILE.requested_scopes);
+  const workspaceSeed = input.workspace_id || `tenant:${slugify(tenantName)}:${shortHash(hashValue({ tenantName, useCase, planId, sources, regions }))}`;
+  return {
+    tenant_name: tenantName,
+    workspace_id: String(workspaceSeed),
+    use_case: useCase,
+    plan_id: planId,
+    regions,
+    sources,
+    compliance_profile: input.compliance_profile || DEFAULT_TENANT_PROFILE.compliance_profile,
+    billing_contact: input.billing_contact || input.billing_email || DEFAULT_TENANT_PROFILE.billing_contact,
+    sso_protocol: input.sso_protocol || DEFAULT_TENANT_PROFILE.sso_protocol,
+    gateway_domain: input.gateway_domain || input.customer_gateway_domain || DEFAULT_TENANT_PROFILE.gateway_domain,
+    allowed_origins: normalizeList(input.allowed_origins, DEFAULT_TENANT_PROFILE.allowed_origins),
+    requested_scopes: requestedScopes,
+    dual_mode: input.dual_mode || DEFAULT_TENANT_PROFILE.dual_mode,
+    adapter_cutover: input.adapter_cutover || DEFAULT_TENANT_PROFILE.adapter_cutover
+  };
+}
+
+function buildTenantGatewayManifest(profile, adapterPlan, apiCredentialPreview, dualBinding) {
+  return {
+    status: "gateway_manifest_ready",
+    gateway_id: `gateway:${shortHash(hashValue({ workspace_id: profile.workspace_id, domain: profile.gateway_domain }))}`,
+    tenant_domain: profile.gateway_domain,
+    allowed_origins: profile.allowed_origins,
+    mcp_endpoint: `https://${profile.gateway_domain}/mcp`,
+    auth: {
+      sso_protocol: profile.sso_protocol,
+      api_key_id: apiCredentialPreview.key_id,
+      api_secret_returned: false,
+      supported_modes: ["SSO session", "tenant API key", "signed webhook", "mTLS service account"]
+    },
+    ingress: {
+      public_read_routes: ["/proof/*", "/api/proof/public", "/api/status"],
+      tenant_routes: ["/mcp", "/api/capsule/*", "/api/workflow/*", "/api/evidence/*"],
+      operator_routes: ["/api/capsules/sync", "/api/capsules/mint"],
+      operator_routes_require_server_token: true
+    },
+    webhooks: {
+      signature: "HMAC-SHA256 or mTLS",
+      events: ["proof.created", "proof.verified", "adapter.certified", "dual.readback.verified", "dual.write.queued"],
+      raw_evidence_payloads_allowed: false
+    },
+    adapter_ingress: adapterPlan.map((adapter) => ({
+      source: adapter.source,
+      status: adapter.activation_status,
+      auth_model: adapter.auth_model,
+      freshness_rule: adapter.freshness_rule
+    })),
+    dual_routes: {
+      status: "/api/dual/status",
+      current_capsule: "/api/capsule/current",
+      sync: "/api/capsules/sync",
+      mint: "/api/capsules/mint",
+      binding_status: dualBinding.binding_status
+    },
+    audit_fields: [
+      "tenant_id",
+      "actor",
+      "tool",
+      "capsule_id",
+      "decision_hash",
+      "source_refs",
+      "dual_object_id",
+      "public_writes",
+      "operator_gate"
+    ],
+    public_writes: false
   };
 }
 

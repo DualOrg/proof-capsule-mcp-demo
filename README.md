@@ -4,7 +4,7 @@ Proof Capsule is the use-case-agnostic DUAL primitive behind TradeFlow-style pro
 
 This sandbox exposes that primitive through a Streamable HTTP MCP endpoint and a small UI. In production it can read from a live DUAL object and execute operator-gated event-bus mint/sync writes.
 
-The v0.8 model turns that surface into an extensible SaaS package: universal multi-proof capsules, shareable proof rooms, scenario marketplace, agent-mode MCP aliases, workflow simulation, proof attachment, tenant onboarding, pricing/plan packaging, admin readiness, connector status, a tenant extension studio, adapter certification, schema migration, and the same operator-gated DUAL write boundary. Live writes remain operator-gated.
+The v0.9 model turns that surface into an extensible SaaS package with tenant activation: universal multi-proof capsules, shareable proof rooms, scenario marketplace, agent-mode MCP aliases, workflow simulation, proof attachment, tenant onboarding, pricing/plan packaging, admin readiness, connector status, self-service activation artifacts, a tenant extension studio, adapter certification, schema migration, and the same operator-gated DUAL write boundary. Live writes remain operator-gated.
 
 ## Scope
 
@@ -131,6 +131,10 @@ Tools:
 - `list_saas_plans`
 - `create_tenant_onboarding_plan`
 - `get_admin_control_plane`
+- `get_tenant_activation_blueprint`
+- `create_tenant_activation_request`
+- `issue_tenant_api_key_preview`
+- `bind_dual_tenant_gateway`
 - `get_extensibility_kit`
 - `build_extension_pack`
 - `certify_source_adapter`
@@ -159,6 +163,10 @@ Resources:
 - `capsule://saas/plans`
 - `capsule://saas/onboarding`
 - `capsule://saas/admin`
+- `capsule://activation/blueprint`
+- `capsule://activation/security`
+- `capsule://activation/gateway`
+- `capsule://activation/dual-binding`
 - `capsule://extensions/kit`
 - `capsule://extensions/scorecard`
 - `capsule://extensions/adapter-contract`
@@ -184,12 +192,38 @@ Prompts:
 - `supercharge_proof_capsule`
 - `launch_proof_capsule_saas_tenant`
 - `extend_proof_capsule_product`
+- `activate_proof_capsule_tenant`
 
-## v0.8 Extension Studio
+## v0.9 Tenant Activation Gateway
+
+The public app now includes the missing customer self-service layer as an activation gateway:
+
+- **Billing activation:** emits plan, billing contact, checkout/invoice provider contract, renewal terms, and the explicit boundary that public-demo payment capture is false.
+- **SSO activation:** emits OIDC/SAML metadata, callback URL, role mapping, and fallback admin requirements without creating public-demo sessions.
+- **API-key issuance:** returns a scoped key id, prefix, scopes, rate limits, rotation, and revocation policy. It never returns a usable secret in browser/MCP/API responses.
+- **Customer gateway setup:** emits gateway domain, allowed origins, MCP/API routes, webhook signing, adapter ingress, audit fields, and server-token requirement for operator routes.
+- **Live adapter onboarding:** carries source-specific auth, certification, cutover, freshness, and recheck-before-action contracts.
+- **DUAL tenant binding:** prepares the tenant org/template/object strategy, DUAL explorer links, operator-gated event-bus policy, and readback-after-write requirements without executing a write.
+
+REST endpoints:
+
+- `GET|POST /api/activation/blueprint`
+- `POST /api/activation/request`
+- `POST /api/activation/api-key-preview`
+- `POST /api/activation/dual-bind`
+
+MCP tools:
+
+- `get_tenant_activation_blueprint`
+- `create_tenant_activation_request`
+- `issue_tenant_api_key_preview`
+- `bind_dual_tenant_gateway`
+
+## v0.9 Extension Studio
 
 The public app now includes a real extensibility layer, not just pre-coded scenarios:
 
-- **Extensibility score:** `extensibility_score` is computed from weighted controls, with the remaining holdback being customer gateway activation.
+- **Extensibility score:** `extensibility_score` is computed from weighted controls and now includes the tenant activation gateway handoff.
 - **Extension pack builder:** turns tenant config into a workflow definition, capsule preview, adapter certification summary, migration plan, marketplace listing, MCP handoff, and acceptance gates.
 - **Source adapter certification:** checks proof types, canonical hashing, raw-evidence boundary, freshness rules, auth model, MCP-safe output, live/signed source mode, replay fixture, action recheck, and tenant activation.
 - **Schema migration planner:** emits snapshot, transform, re-derive, replay, public-verifier, operator-approval, readback, and rollback steps for versioned extension packs.
@@ -209,7 +243,7 @@ MCP tools:
 - `certify_source_adapter`
 - `plan_schema_migration`
 
-## v0.8 SaaS Launch Desk
+## v0.9 SaaS Launch Desk
 
 The public app now shows a SaaS control plane, not just a proof demo:
 
@@ -217,14 +251,15 @@ The public app now shows a SaaS control plane, not just a proof demo:
 - **Tenant onboarding:** generates a workspace id, plan, workflow seed, connector plan, launch steps, MCP first calls, write policy, and data boundary for a customer tenant.
 - **Admin plane:** exposes launch readiness, proof operations, connector health, write governance, audit schema, support model, and incident runbook.
 - **Connector readiness:** distinguishes live DUAL readback from demo/source-reference adapters that need tenant-specific production integration, both in the API payload and the visible UI badges.
-- **Computed readiness:** `package_readiness_score` is derived from weighted package controls, with customer auth/billing kept as a visible tenant-activation holdback instead of a hardcoded score.
+- **Computed readiness:** `package_readiness_score` is derived from weighted package controls and now reaches 100 when the self-service activation gateway is present. Live tenant activation is scored separately.
 - **Extensibility readiness:** `get_saas_readiness` includes the extension score, score basis, no-code pack builder, adapter certification, migration planner, and marketplace publication state.
+- **Tenant activation readiness:** `get_saas_readiness` includes the activation package score, tenant live score, API-secret boundary, gateway status, and DUAL binding status.
 - **Pilot sales pack:** see [docs/proof-capsule-pilot-sales-pack.md](docs/proof-capsule-pilot-sales-pack.md) for buyer story, demo route, acceptance gates, and objection handling.
 
 The honest SaaS boundary is explicit:
 
 - Sellable now as a paid pilot or assisted B2B SaaS package.
-- Public demo does not issue customer accounts, API keys, SSO sessions, invoices, or payment collection.
+- Public demo emits activation artifacts for billing, SSO, scoped API credentials, customer gateway, source adapters, and DUAL binding, but does not capture payment, create public-demo SSO sessions, or return API secrets.
 - Non-DUAL source systems remain structured refs until a tenant adapter or signed source feed is connected.
 - DUAL writes remain server-side and operator-gated; public writes stay false.
 

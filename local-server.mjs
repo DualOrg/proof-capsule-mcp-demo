@@ -9,8 +9,10 @@ import {
   buildPublicVerifierPage,
   buildExtensionPack,
   buildWorkflowDraft,
+  bindDualTenantGateway,
   compareCapsules,
   composeProofCapsule,
+  createTenantActivationRequest,
   createTenantOnboardingPlan,
   certifySourceAdapter,
   diagnoseCapsule,
@@ -19,7 +21,9 @@ import {
   getAdminControlPlane,
   getExtensibilityKit,
   getSaasReadiness,
+  getTenantActivationBlueprint,
   getWorkflowDefinition,
+  issueTenantApiKeyPreview,
   listScenarioMarketplace,
   listSaasPlans,
   listVerifierMarketplace,
@@ -325,6 +329,43 @@ async function handleApi(req, res, url) {
         dual_status: await getDualStatusLive()
       }));
     }
+  }
+
+  if (url.pathname === "/api/activation/blueprint") {
+    if (req.method === "GET") {
+      return sendJson(res, 200, getTenantActivationBlueprint({
+        tenant_name: url.searchParams.get("tenant_name") || undefined,
+        use_case: url.searchParams.get("use_case") || undefined,
+        plan_id: url.searchParams.get("plan_id") || undefined,
+        sources: url.searchParams.get("sources") || undefined,
+        gateway_domain: url.searchParams.get("gateway_domain") || undefined,
+        dual_status: await getDualStatusLive()
+      }));
+    }
+    if (req.method === "POST") {
+      return sendJson(res, 200, getTenantActivationBlueprint({
+        ...(await readBody(req)),
+        dual_status: await getDualStatusLive()
+      }));
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/activation/request") {
+    return sendJson(res, 200, createTenantActivationRequest({
+      ...(await readBody(req)),
+      dual_status: await getDualStatusLive()
+    }));
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/activation/api-key-preview") {
+    return sendJson(res, 200, issueTenantApiKeyPreview(await readBody(req)));
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/activation/dual-bind") {
+    return sendJson(res, 200, bindDualTenantGateway({
+      ...(await readBody(req)),
+      dual_status: await getDualStatusLive()
+    }));
   }
 
   if (req.method === "GET" && url.pathname === "/api/extensions/kit") {

@@ -8,6 +8,10 @@ let saasReadiness = null;
 let saasPlans = null;
 let tenantPlan = null;
 let adminPlane = null;
+let activationBlueprint = null;
+let activationRequest = null;
+let activationApiCredential = null;
+let activationDualBinding = null;
 let extensionKit = null;
 let extensionPack = null;
 let adapterCertification = null;
@@ -113,7 +117,7 @@ const reviewerSteps = [
     body: "Start with one of the six demo workflows. Each one composes a different proof capsule shape while keeping the same DUAL verifier boundary.",
     facts: () => [
       ["Scenario", $("scenarioLabel")?.textContent || "Loading"],
-      ["MCP", "36 tools"],
+      ["MCP", "44 tools"],
       ["Public writes", "false"],
       ["Mode", liveStatus?.mode || "checking"]
     ]
@@ -128,6 +132,18 @@ const reviewerSteps = [
       ["Package", saasReadiness?.package_readiness_score ? `${saasReadiness.package_readiness_score}/100` : "-"],
       ["Tenant", tenantPlan?.workspace_id || "pending"],
       ["Sellable", saasReadiness?.sellable_now ? "yes" : "checking"]
+    ]
+  },
+  {
+    id: "activation",
+    targetId: "activationGatewayPanel",
+    title: "Activate the tenant",
+    body: "The activation gateway converts the SaaS package into customer setup artifacts: billing, SSO, API access, gateway setup, live adapters, and DUAL binding.",
+    facts: () => [
+      ["Package", activationBlueprint?.activation_package_score !== undefined ? `${activationBlueprint.activation_package_score}/100` : "Loading"],
+      ["Tenant", activationBlueprint?.tenant_activation_score !== undefined ? `${activationBlueprint.tenant_activation_score}/100` : "Loading"],
+      ["API secret", activationApiCredential?.secret_returned === false ? "not returned" : "preview"],
+      ["DUAL", activationDualBinding?.binding_status || activationBlueprint?.dual_integration?.binding_status || "checking"]
     ]
   },
   {
@@ -527,6 +543,100 @@ async function loadSaasDesk() {
   ]);
   renderSaasDesk(readiness, plans, onboarding, admin);
   return { readiness, plans, onboarding, admin };
+}
+
+function renderActivationGateway(blueprint, request = activationRequest, credential = activationApiCredential, dualBinding = activationDualBinding) {
+  activationBlueprint = blueprint || activationBlueprint;
+  activationRequest = request || activationRequest;
+  activationApiCredential = credential || activationApiCredential || activationBlueprint?.api_key_issuance || null;
+  activationDualBinding = dualBinding || activationDualBinding || activationBlueprint?.dual_integration || null;
+  if (!activationBlueprint) return;
+
+  $("activationStage").textContent = `${activationBlueprint.activation_package_score || "-"} / 100`;
+  $("activationRequestStatus").textContent = activationRequest?.status
+    ? displayToken(activationRequest.status)
+    : displayToken(activationBlueprint.activation_status || "ready");
+  $("activationAuthStatus").textContent = `${displayToken(activationBlueprint.billing_activation?.status)} / ${displayToken(activationBlueprint.sso_activation?.status)}`;
+  $("activationApiStatus").textContent = activationApiCredential?.secret_returned === false ? "No secrets" : "Preview";
+  $("activationDualStatus").textContent = displayToken(activationDualBinding?.binding_status || "Operator gated");
+
+  $("activationSummary").innerHTML = [
+    ["Package", `${activationBlueprint.activation_package_score ?? "-"} / 100`],
+    ["Tenant live", `${activationBlueprint.tenant_activation_score ?? "-"} / 100`],
+    ["Billing", displayToken(activationBlueprint.billing_activation?.status || "-")],
+    ["SSO", displayToken(activationBlueprint.sso_activation?.status || "-")],
+    ["Gateway", displayToken(activationBlueprint.customer_gateway_setup?.status || "-")],
+    ["DUAL", displayToken(activationBlueprint.dual_integration?.binding_status || "-")]
+  ].map(([label, value]) => `
+    <div class="saas-metric">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `).join("");
+
+  $("activationRequestStack").innerHTML = activationRequest ? (activationRequest.activation_steps || []).map((step) => `
+    <div class="saas-row ${step.status === "ready" ? "ready" : "holdback"}">
+      <span>${escapeHtml(displayToken(step.status))}</span>
+      <strong>${escapeHtml(step.step)}. ${escapeHtml(step.title)}</strong>
+      <p>${escapeHtml(step.detail)}</p>
+    </div>
+  `).join("") : (activationBlueprint.tenant_activation_basis?.checks || []).map((check) => `
+    <div class="saas-row ${check.ready ? "ready" : "holdback"}">
+      <span>${escapeHtml(displayToken(check.status))}</span>
+      <strong>${escapeHtml(check.area)}</strong>
+      <p>${escapeHtml(check.evidence)}</p>
+    </div>
+  `).join("");
+
+  $("activationAuthStack").innerHTML = [
+    ["Billing contact", activationBlueprint.billing_activation?.billing_contact],
+    ["Commercial motion", displayToken(activationBlueprint.billing_activation?.commercial_motion)],
+    ["Payment capture", activationBlueprint.billing_activation?.payment_capture_by_public_demo ? "public demo" : "customer system"],
+    ["SSO protocol", activationBlueprint.sso_activation?.protocol],
+    ["Callback", activationBlueprint.sso_activation?.callback_url],
+    ["Roles", (activationBlueprint.sso_activation?.role_mapping || []).join(", ")]
+  ].map(([label, value]) => `
+    <div class="saas-row">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(String(value || "-"))}</strong>
+    </div>
+  `).join("");
+
+  $("activationApiStack").innerHTML = [
+    ["Key", activationApiCredential?.key_id],
+    ["Prefix", activationApiCredential?.key_prefix],
+    ["Secret returned", activationApiCredential?.secret_returned === false ? "false" : "-"],
+    ["Scopes", (activationApiCredential?.scopes || []).join(", ")],
+    ["Gateway", activationBlueprint.customer_gateway_setup?.tenant_domain],
+    ["Operator routes", activationBlueprint.customer_gateway_setup?.ingress?.operator_routes_require_server_token ? "server token required" : "blocked"]
+  ].map(([label, value]) => `
+    <div class="saas-row ${label === "Secret returned" ? "ready" : ""}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(String(value || "-"))}</strong>
+    </div>
+  `).join("");
+
+  $("activationDualStack").innerHTML = [
+    ["Binding", activationDualBinding?.dual_binding_id],
+    ["Mode", activationDualBinding?.binding_mode],
+    ["Object", activationDualBinding?.dual?.object_id || "-"],
+    ["Template", activationDualBinding?.dual?.template_id || "-"],
+    ["Write execution", activationDualBinding?.gateway_policy?.write_execution],
+    ["Explorer links", `${(activationDualBinding?.explorer_links || []).length}`]
+  ].map(([label, value]) => `
+    <div class="saas-row ${label === "Write execution" ? "ready" : ""}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(String(value || "-"))}</strong>
+    </div>
+  `).join("");
+
+  refreshReviewChrome();
+}
+
+async function loadActivationGateway() {
+  const payload = await jsonFetch("/api/activation/blueprint");
+  renderActivationGateway(payload);
+  return payload;
 }
 
 function renderExtensionStudio(kit, pack = extensionPack, certification = adapterCertification, migration = migrationPlan) {
@@ -1141,6 +1251,65 @@ async function generateTenantPlan() {
   refreshReviewChrome();
 }
 
+function activationPayload(extra = {}) {
+  return {
+    tenant_name: $("tenantName").value,
+    use_case: $("tenantUseCase").value,
+    plan_id: $("tenantPlan").value,
+    sources: $("tenantSources").value,
+    gateway_domain: $("activationGatewayDomain").value,
+    sso_protocol: $("activationSsoProtocol").value,
+    billing_configured: $("activationBillingState").value === "configured",
+    sso_configured: $("activationSsoProtocol").value.length > 0 && extra.sso_configured === true,
+    live_source_adapters: $("activationAdapterState").value === "configured",
+    endpoint: `${window.location.origin}/mcp`,
+    ...extra
+  };
+}
+
+async function createActivationRequest() {
+  const payload = await jsonFetch("/api/activation/request", {
+    method: "POST",
+    body: JSON.stringify(activationPayload())
+  });
+  activationRequest = payload;
+  const blueprint = await jsonFetch("/api/activation/blueprint", {
+    method: "POST",
+    body: JSON.stringify(activationPayload())
+  });
+  renderActivationGateway(blueprint, payload, activationApiCredential, activationDualBinding);
+  $("outputTitle").textContent = "Tenant activation request";
+  $("output").textContent = JSON.stringify(payload, null, 2);
+}
+
+async function previewApiKey() {
+  const payload = await jsonFetch("/api/activation/api-key-preview", {
+    method: "POST",
+    body: JSON.stringify(activationPayload({
+      workspace_id: tenantPlan?.workspace_id || activationBlueprint?.tenant?.workspace_id,
+      scopes: "capsule:read, capsule:run, proof:publish, gateway:adapter:onboard",
+      environment: "production"
+    }))
+  });
+  activationApiCredential = payload;
+  renderActivationGateway(activationBlueprint, activationRequest, payload, activationDualBinding);
+  $("outputTitle").textContent = "Tenant API credential preview";
+  $("output").textContent = JSON.stringify(payload, null, 2);
+}
+
+async function prepareDualBinding() {
+  const payload = await jsonFetch("/api/activation/dual-bind", {
+    method: "POST",
+    body: JSON.stringify(activationPayload({
+      workspace_id: tenantPlan?.workspace_id || activationBlueprint?.tenant?.workspace_id
+    }))
+  });
+  activationDualBinding = payload;
+  renderActivationGateway(activationBlueprint, activationRequest, activationApiCredential, payload);
+  $("outputTitle").textContent = "DUAL tenant binding";
+  $("output").textContent = JSON.stringify(payload, null, 2);
+}
+
 async function buildExtensionPack() {
   const payload = await jsonFetch("/api/extensions/build", {
     method: "POST",
@@ -1381,6 +1550,9 @@ $("verifyEvidenceBtn").addEventListener("click", () => verifyEvidence().then((pa
 }).catch(showError));
 $("buildWorkflowBtn").addEventListener("click", () => buildWorkflow().catch(showError));
 $("generateTenantPlanBtn").addEventListener("click", () => generateTenantPlan().catch(showError));
+$("createActivationRequestBtn").addEventListener("click", () => createActivationRequest().catch(showError));
+$("previewApiKeyBtn").addEventListener("click", () => previewApiKey().catch(showError));
+$("prepareDualBindingBtn").addEventListener("click", () => prepareDualBinding().catch(showError));
 $("buildExtensionBtn").addEventListener("click", () => buildExtensionPack().catch(showError));
 $("certifyAdapterBtn").addEventListener("click", () => certifyAdapter().catch(showError));
 $("planMigrationBtn").addEventListener("click", () => planExtensionMigration().catch(showError));
@@ -1398,6 +1570,7 @@ Promise.resolve()
   .then(async (status) => {
     await loadScenarioMarketplace();
     await loadSaasDesk();
+    await loadActivationGateway();
     await loadExtensionStudio();
     return status;
   })

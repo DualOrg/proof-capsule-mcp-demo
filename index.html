@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Proof Capsule Control Desk</title>
-    <link rel="stylesheet" href="/styles.css?v=0.8.0-extensibility">
+    <link rel="stylesheet" href="/styles.css?v=0.9.0-activation-2">
   </head>
   <body>
     <header class="topbar">
@@ -157,6 +157,78 @@
               <strong id="connectorStatus">Loading</strong>
             </div>
             <div id="connectorStack" class="saas-stack"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="activationGatewayPanel" class="panel activation-gateway" aria-label="Tenant activation gateway">
+        <div class="panel-title">
+          <span>Tenant activation gateway</span>
+          <strong id="activationStage">Loading</strong>
+        </div>
+        <div class="saas-summary activation-summary" id="activationSummary"></div>
+        <div class="saas-grid activation-grid">
+          <section>
+            <div class="panel-title compact-title">
+              <span>Customer setup</span>
+              <strong id="activationRequestStatus">Ready</strong>
+            </div>
+            <div class="form-grid">
+              <div>
+                <label for="activationGatewayDomain">Gateway domain</label>
+                <input id="activationGatewayDomain" type="text" value="gateway.acme-proof.example">
+              </div>
+              <div>
+                <label for="activationSsoProtocol">SSO</label>
+                <select id="activationSsoProtocol">
+                  <option value="OIDC" selected>OIDC</option>
+                  <option value="SAML">SAML</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div>
+                <label for="activationBillingState">Billing</label>
+                <select id="activationBillingState">
+                  <option value="ready" selected>Ready to activate</option>
+                  <option value="configured">Configured</option>
+                </select>
+              </div>
+              <div>
+                <label for="activationAdapterState">Live adapters</label>
+                <select id="activationAdapterState">
+                  <option value="onboarding" selected>Onboarding</option>
+                  <option value="configured">Configured</option>
+                </select>
+              </div>
+            </div>
+            <button id="createActivationRequestBtn" type="button">Create activation request</button>
+            <div id="activationRequestStack" class="saas-stack"></div>
+          </section>
+          <section>
+            <div class="panel-title compact-title">
+              <span>Billing + SSO</span>
+              <strong id="activationAuthStatus">Packaged</strong>
+            </div>
+            <div id="activationAuthStack" class="saas-stack"></div>
+          </section>
+          <section>
+            <div class="panel-title compact-title">
+              <span>API + gateway</span>
+              <strong id="activationApiStatus">No secrets</strong>
+            </div>
+            <div class="button-row">
+              <button id="previewApiKeyBtn" type="button">Preview API key</button>
+              <button id="prepareDualBindingBtn" type="button">Prepare DUAL binding</button>
+            </div>
+            <div id="activationApiStack" class="saas-stack"></div>
+          </section>
+          <section>
+            <div class="panel-title compact-title">
+              <span>DUAL binding</span>
+              <strong id="activationDualStatus">Operator gated</strong>
+            </div>
+            <div id="activationDualStack" class="saas-stack"></div>
           </section>
         </div>
       </section>
@@ -562,6 +634,6 @@
       </section>
     </main>
 
-    <script type="module" src="/client.js?v=0.8.0-extensibility"></script>
+    <script type="module" src="/client.js?v=0.9.0-activation-2"></script>
   </body>
 </html>

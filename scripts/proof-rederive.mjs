@@ -5,9 +5,11 @@ import {
   buildPublicVerifierPage,
   buildExtensionPack,
   buildWorkflowDraft,
+  bindDualTenantGateway,
   certifySourceAdapter,
   compareCapsules,
   composeProofCapsule,
+  createTenantActivationRequest,
   createTenantOnboardingPlan,
   diagnoseCapsule,
   evaluateCapsulePolicy,
@@ -15,7 +17,9 @@ import {
   getAdminControlPlane,
   getExtensibilityKit,
   getSaasReadiness,
+  getTenantActivationBlueprint,
   getWorkflowDefinition,
+  issueTenantApiKeyPreview,
   listScenarioMarketplace,
   listSaasPlans,
   listVerifierMarketplace,
@@ -195,6 +199,35 @@ const adminPlane = getAdminControlPlane({
   live_dual_readback: true,
   operator_gate_configured: true
 });
+const activationBlueprint = getTenantActivationBlueprint({
+  tenant_name: "Acme Proof Operations",
+  use_case: "multi-source proof rooms for regulated workflow decisions",
+  plan_id: "growth_control_plane",
+  sources: "dual, enterprise_vault, solana, ipfs, payment_preview",
+  live_dual_readback: true,
+  operator_gate_configured: true
+});
+const activationRequest = createTenantActivationRequest({
+  tenant_name: "Acme Proof Operations",
+  use_case: "multi-source proof rooms for regulated workflow decisions",
+  plan_id: "growth_control_plane",
+  sources: "dual, enterprise_vault, solana, ipfs, payment_preview",
+  live_dual_readback: true,
+  operator_gate_configured: true
+});
+const activationApiKey = issueTenantApiKeyPreview({
+  tenant_name: "Acme Proof Operations",
+  workspace_id: tenantOnboarding.workspace_id,
+  scopes: "capsule:read, capsule:run, proof:publish, gateway:adapter:onboard"
+});
+const activationDualBinding = bindDualTenantGateway({
+  tenant_name: "Acme Proof Operations",
+  workspace_id: tenantOnboarding.workspace_id,
+  live_dual_readback: true,
+  operator_gate_configured: true,
+  dual_object_id: "proof-capsule-object-smoke",
+  dual_template_id: "proof-capsule-template-smoke"
+});
 const extensibilityKit = getExtensibilityKit();
 const extensionPack = buildExtensionPack({
   tenant_name: "Acme Proof Operations",
@@ -259,10 +292,11 @@ if (saasPlans.plan_count < 3 || !saasPlans.plans.some((plan) => plan.plan_id ===
 
 if (
   !saasReadiness.sellable_now
-  || saasReadiness.package_readiness_score < 98
+  || saasReadiness.package_readiness_score < 100
   || saasReadiness.package_readiness_basis?.score_type !== "computed_weighted_package_controls"
   || !saasReadiness.package_readiness_basis?.checks?.some((check) => check.key === "pilot_sales_pack" && check.ready)
-  || !saasReadiness.package_readiness_basis?.holdbacks?.some((check) => check.key === "customer_gateway_activation")
+  || !saasReadiness.package_readiness_basis?.checks?.some((check) => check.key === "self_service_tenant_activation" && check.ready)
+  || saasReadiness.tenant_activation_gateway?.activation_package_score < 100
   || !saasReadiness.readiness_checks?.some((check) => check.key === "tenant_onboarding" && check.ready)
 ) {
   throw new Error("SaaS readiness model is incomplete.");
@@ -274,6 +308,36 @@ if (!tenantOnboarding.workspace_id || !tenantOnboarding.launch_steps?.length || 
 
 if (!adminPlane.admin_plane_id || !adminPlane.ops_views?.length || !adminPlane.audit_schema?.capsule_id) {
   throw new Error("Admin control plane is incomplete.");
+}
+
+if (
+  activationBlueprint.activation_package_score < 100
+  || activationBlueprint.activation_package_basis?.score_type !== "computed_weighted_activation_package_controls"
+  || activationBlueprint.api_key_issuance?.secret_returned !== false
+  || activationBlueprint.dual_integration?.gateway_policy?.operator_token_required !== true
+  || activationBlueprint.customer_gateway_setup?.ingress?.operator_routes_require_server_token !== true
+) {
+  throw new Error("Tenant activation blueprint is incomplete.");
+}
+
+if (
+  !activationRequest.activation_request_id
+  || !activationRequest.activation_steps?.some((step) => step.title === "DUAL binding")
+  || !activationRequest.mcp_handoff?.first_calls?.includes("get_tenant_activation_blueprint")
+) {
+  throw new Error("Tenant activation request is incomplete.");
+}
+
+if (!activationApiKey.key_id || activationApiKey.secret_returned !== false || !activationApiKey.scopes?.includes("capsule:run")) {
+  throw new Error("Tenant API-key preview returned an unsafe or incomplete credential.");
+}
+
+if (
+  activationDualBinding.binding_status !== "dual_gateway_bound"
+  || activationDualBinding.gateway_policy?.write_execution !== "not_enabled_until_operator_gate"
+  || activationDualBinding.gateway_policy?.public_writes !== false
+) {
+  throw new Error("DUAL tenant binding model is incomplete.");
 }
 
 if (
@@ -329,6 +393,11 @@ console.log(JSON.stringify({
   saasPackageScore: saasReadiness.package_readiness_score,
   saasPackageScoreType: saasReadiness.package_readiness_basis.score_type,
   saasActivationScore: saasReadiness.tenant_activation_score,
+  tenantActivationPackageScore: activationBlueprint.activation_package_score,
+  tenantActivationScore: activationBlueprint.tenant_activation_score,
+  activationRequestId: activationRequest.activation_request_id,
+  activationApiKeyId: activationApiKey.key_id,
+  activationDualBindingId: activationDualBinding.dual_binding_id,
   extensibilityScore: extensibilityKit.extensibility_score,
   extensibilityScoreType: extensibilityKit.score_basis.score_type,
   extensionPackId: extensionPack.extension_pack_id,

@@ -17,6 +17,8 @@ import {
   certifySourceAdapter,
   compareCapsules,
   composeProofCapsule,
+  bindDualTenantGateway,
+  createTenantActivationRequest,
   createTenantOnboardingPlan,
   createCapsule,
   defaultPolicy,
@@ -27,8 +29,10 @@ import {
   getAdminControlPlane,
   getExtensibilityKit,
   getSaasReadiness,
+  getTenantActivationBlueprint,
   getWorkflowDefinition,
   handoff,
+  issueTenantApiKeyPreview,
   listScenarioMarketplace,
   listSaasPlans,
   listVerifierMarketplace,
@@ -448,6 +452,68 @@ export function createMcpServer() {
       mimeType: "application/json"
     },
     async (uri) => ({ contents: [{ uri: uri.href, text: JSON.stringify(getAdminControlPlane({ dual_status: await getDualStatusLive() }), null, 2) }] })
+  );
+
+  server.registerResource(
+    "activation-blueprint",
+    "capsule://activation/blueprint",
+    {
+      title: "Tenant Activation Blueprint",
+      description: "Self-service tenant activation contract for billing, SSO, API credentials, customer gateway, live adapters, and DUAL binding.",
+      mimeType: "application/json"
+    },
+    async (uri) => ({ contents: [{ uri: uri.href, text: JSON.stringify(getTenantActivationBlueprint({ dual_status: await getDualStatusLive() }), null, 2) }] })
+  );
+
+  server.registerResource(
+    "activation-security",
+    "capsule://activation/security",
+    {
+      title: "Tenant Activation Security Contract",
+      description: "Secret, SSO, API-key, public-write, and operator-gate boundary for tenant activation.",
+      mimeType: "application/json"
+    },
+    async (uri) => {
+      const blueprint = getTenantActivationBlueprint({ dual_status: await getDualStatusLive() });
+      return {
+        contents: [{
+          uri: uri.href,
+          text: JSON.stringify({
+            ok: true,
+            package_version: blueprint.package_version,
+            api_key_issuance: blueprint.api_key_issuance,
+            write_boundary: blueprint.write_boundary,
+            dual_gateway_policy: blueprint.dual_integration.gateway_policy,
+            public_writes: false
+          }, null, 2)
+        }]
+      };
+    }
+  );
+
+  server.registerResource(
+    "activation-gateway",
+    "capsule://activation/gateway",
+    {
+      title: "Customer Gateway Setup",
+      description: "Tenant gateway routes, origins, auth, webhook, adapter ingress, and audit model.",
+      mimeType: "application/json"
+    },
+    async (uri) => {
+      const blueprint = getTenantActivationBlueprint({ dual_status: await getDualStatusLive() });
+      return { contents: [{ uri: uri.href, text: JSON.stringify({ ok: true, gateway: blueprint.customer_gateway_setup }, null, 2) }] };
+    }
+  );
+
+  server.registerResource(
+    "activation-dual-binding",
+    "capsule://activation/dual-binding",
+    {
+      title: "DUAL Tenant Binding",
+      description: "DUAL org/template/object strategy, explorer links, operator-gated event-bus policy, and readback checks.",
+      mimeType: "application/json"
+    },
+    async (uri) => ({ contents: [{ uri: uri.href, text: JSON.stringify(bindDualTenantGateway({ dual_status: await getDualStatusLive() }), null, 2) }] })
   );
 
   server.registerResource(
@@ -1208,8 +1274,13 @@ export function createMcpServer() {
         live_dual_writes: z.boolean().optional(),
         operator_gate_configured: z.boolean().optional(),
         auth_configured: z.boolean().optional(),
+        sso_configured: z.boolean().optional(),
+        api_key_issued: z.boolean().optional(),
+        customer_gateway_configured: z.boolean().optional(),
         billing_configured: z.boolean().optional(),
-        source_adapters_configured: z.boolean().optional()
+        source_adapters_configured: z.boolean().optional(),
+        live_source_adapters: z.boolean().optional(),
+        dual_tenant_binding_configured: z.boolean().optional()
       },
       annotations: READ_ONLY_ANNOTATIONS,
       _meta: TOOL_META
@@ -1279,6 +1350,123 @@ export function createMcpServer() {
       _meta: TOOL_META
     },
     async (input) => jsonText(getAdminControlPlane({
+      ...input,
+      dual_status: await getDualStatusLive()
+    }))
+  );
+
+  server.registerTool(
+    "get_tenant_activation_blueprint",
+    {
+      title: "Get Tenant Activation Blueprint",
+      description: "Return the self-service tenant activation package for billing, SSO, API keys, customer gateway setup, live adapters, and DUAL tenant binding.",
+      inputSchema: {
+        tenant_name: z.string().optional(),
+        tenant: z.string().optional(),
+        use_case: z.string().optional(),
+        plan_id: z.string().optional(),
+        plan: z.string().optional(),
+        regions: z.union([z.array(z.string()), z.string()]).optional(),
+        sources: z.union([z.array(z.string()), z.string()]).optional(),
+        selected_sources: z.union([z.array(z.string()), z.string()]).optional(),
+        billing_configured: z.boolean().optional(),
+        billing_provider_connected: z.boolean().optional(),
+        sso_configured: z.boolean().optional(),
+        auth_configured: z.boolean().optional(),
+        api_key_issued: z.boolean().optional(),
+        customer_gateway_configured: z.boolean().optional(),
+        live_source_adapters: z.boolean().optional(),
+        source_adapters_configured: z.boolean().optional(),
+        dual_tenant_binding_configured: z.boolean().optional(),
+        gateway_domain: z.string().optional(),
+        sso_protocol: z.string().optional(),
+        requested_scopes: z.union([z.array(z.string()), z.string()]).optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(getTenantActivationBlueprint({
+      ...input,
+      dual_status: await getDualStatusLive()
+    }))
+  );
+
+  server.registerTool(
+    "create_tenant_activation_request",
+    {
+      title: "Create Tenant Activation Request",
+      description: "Create a tenant activation request and launch sequence across billing, SSO, API credentials, customer gateway, live adapters, and DUAL binding.",
+      inputSchema: {
+        tenant_name: z.string().optional(),
+        tenant: z.string().optional(),
+        use_case: z.string().optional(),
+        plan_id: z.string().optional(),
+        plan: z.string().optional(),
+        regions: z.union([z.array(z.string()), z.string()]).optional(),
+        sources: z.union([z.array(z.string()), z.string()]).optional(),
+        billing_configured: z.boolean().optional(),
+        sso_configured: z.boolean().optional(),
+        api_key_issued: z.boolean().optional(),
+        customer_gateway_configured: z.boolean().optional(),
+        live_source_adapters: z.boolean().optional(),
+        source_adapters_configured: z.boolean().optional(),
+        gateway_domain: z.string().optional(),
+        endpoint: z.string().optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(createTenantActivationRequest({
+      ...input,
+      dual_status: await getDualStatusLive()
+    }))
+  );
+
+  server.registerTool(
+    "issue_tenant_api_key_preview",
+    {
+      title: "Issue Tenant API Key Preview",
+      description: "Return a scoped tenant API credential preview with key id, scopes, rotation, revocation, rate limit, and no returned secret.",
+      inputSchema: {
+        tenant_name: z.string().optional(),
+        tenant: z.string().optional(),
+        workspace_id: z.string().optional(),
+        scopes: z.union([z.array(z.string()), z.string()]).optional(),
+        requested_scopes: z.union([z.array(z.string()), z.string()]).optional(),
+        environment: z.string().optional(),
+        api_key_issued: z.boolean().optional(),
+        proof_reads_per_minute: z.number().optional(),
+        proof_runs_per_minute: z.number().optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(issueTenantApiKeyPreview(input))
+  );
+
+  server.registerTool(
+    "bind_dual_tenant_gateway",
+    {
+      title: "Bind DUAL Tenant Gateway",
+      description: "Prepare and verify the tenant DUAL org/template/object binding, explorer links, event-bus write policy, and readback requirements without executing a write.",
+      inputSchema: {
+        tenant_name: z.string().optional(),
+        tenant: z.string().optional(),
+        workspace_id: z.string().optional(),
+        dual_org_id: z.string().optional(),
+        dual_template_id: z.string().optional(),
+        dual_object_id: z.string().optional(),
+        template_strategy: z.string().optional(),
+        object_strategy: z.string().optional(),
+        dual_mode: z.string().optional(),
+        live_dual_readback: z.boolean().optional(),
+        live_dual_writes: z.boolean().optional(),
+        operator_gate_configured: z.boolean().optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(bindDualTenantGateway({
       ...input,
       dual_status: await getDualStatusLive()
     }))
@@ -1560,8 +1748,8 @@ export function createMcpServer() {
       `Prepare a Proof Capsule SaaS tenant launch for ${tenant || "the customer"} using ${plan || "the best-fit plan"}.`,
       `Workflow: ${workflow || "the supplied customer process"}.`,
       "Call get_saas_readiness, list_saas_plans, create_tenant_onboarding_plan, and get_admin_control_plane.",
-      "Return the sellable package, launch checklist, source adapter gaps, proof acceptance path, public verifier story, and the operator-gated DUAL write boundary.",
-      "Do not claim self-serve auth, billing, settlement execution, or live external-source truth unless those customer systems are configured."
+      "Return the sellable package, launch checklist, activation request, source adapter gaps, proof acceptance path, public verifier story, and the operator-gated DUAL write boundary.",
+      "Activation can emit billing, SSO, API-key, gateway, adapter, and DUAL-binding artifacts; do not claim payment capture, returned API secrets, settlement execution, or live external-source truth unless those customer systems are configured."
     ].join("\n"))
   );
 
@@ -1583,6 +1771,27 @@ export function createMcpServer() {
       "Call get_extensibility_kit first, then build_extension_pack, certify_source_adapter for each custom source, and plan_schema_migration before publishing.",
       "Return the extension manifest, workflow definition, adapter certification scores, migration plan, marketplace visibility, acceptance gates, and write boundary.",
       "Do not claim live source truth, production install, or DUAL state mutation until tenant adapters and operator-gated write approval are configured."
+    ].join("\n"))
+  );
+
+  server.registerPrompt(
+    "activate_proof_capsule_tenant",
+    {
+      title: "Activate a Proof Capsule Tenant",
+      description: "Guide an agent through customer self-service activation while preserving DUAL operator-gated writes and secret boundaries.",
+      argsSchema: {
+        tenant: z.string().optional(),
+        workflow: z.string().optional(),
+        sources: z.string().optional()
+      }
+    },
+    ({ tenant, workflow, sources }) => textPrompt([
+      `Activate Proof Capsule tenant ${tenant || "the customer"}.`,
+      `Workflow: ${workflow || "the supplied customer workflow"}.`,
+      `Sources: ${sources || "the selected source systems"}.`,
+      "Call get_tenant_activation_blueprint, create_tenant_activation_request, issue_tenant_api_key_preview, and bind_dual_tenant_gateway.",
+      "Return billing, SSO, scoped API key, customer gateway, live adapter onboarding, DUAL binding, acceptance gates, and remaining customer/operator tasks.",
+      "Do not return API secrets, create SSO sessions, capture payment in the public demo, or call live DUAL write tools unless an authorised operator supplies the server-side token."
     ].join("\n"))
   );
 

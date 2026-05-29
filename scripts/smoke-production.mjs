@@ -32,6 +32,13 @@ const scenarioMarketplace = await get("/api/scenarios/marketplace");
 const saasReadiness = await get("/api/saas/readiness");
 const saasPlans = await get("/api/saas/plans");
 const extensibilityKit = await get("/api/extensions/kit");
+const activationBlueprint = await post("/api/activation/blueprint", {
+  tenant_name: "Acme Proof Operations",
+  use_case: "multi-source proof rooms for regulated workflow decisions",
+  plan_id: "growth_control_plane",
+  sources: "dual, enterprise_vault, solana, ipfs, payment_preview",
+  gateway_domain: "gateway.acme-proof.example"
+});
 const tenantOnboarding = await post("/api/saas/onboarding", {
   tenant_name: "Acme Proof Operations",
   use_case: "multi-source proof rooms for regulated workflow decisions",
@@ -42,6 +49,23 @@ const adminPlane = await post("/api/saas/admin", {
   tenant_name: "Acme Proof Operations",
   plan_id: "growth_control_plane",
   sources: "dual, enterprise_vault, solana, ipfs, payment_preview"
+});
+const activationRequest = await post("/api/activation/request", {
+  tenant_name: "Acme Proof Operations",
+  use_case: "multi-source proof rooms for regulated workflow decisions",
+  plan_id: "growth_control_plane",
+  sources: "dual, enterprise_vault, solana, ipfs, payment_preview",
+  gateway_domain: "gateway.acme-proof.example",
+  endpoint: `${baseUrl}/mcp`
+});
+const activationApiKey = await post("/api/activation/api-key-preview", {
+  tenant_name: "Acme Proof Operations",
+  workspace_id: tenantOnboarding.workspace_id,
+  scopes: "capsule:read, capsule:run, proof:publish, gateway:adapter:onboard"
+});
+const activationDualBinding = await post("/api/activation/dual-bind", {
+  tenant_name: "Acme Proof Operations",
+  workspace_id: tenantOnboarding.workspace_id
 });
 const extensionPack = await post("/api/extensions/build", {
   tenant_name: "Acme Proof Operations",
@@ -120,10 +144,21 @@ const ok = Boolean(
   && marketplace.module_count >= verifiers.verifier_count
   && scenarioMarketplace.template_count >= 7
   && saasReadiness.sellable_now
-  && saasReadiness.package_readiness_score >= 98
+  && saasReadiness.package_readiness_score >= 100
   && saasReadiness.package_readiness_basis?.score_type === "computed_weighted_package_controls"
   && saasReadiness.package_readiness_basis?.checks?.some((check) => check.key === "connector_disclosure" && check.ready)
+  && saasReadiness.package_readiness_basis?.checks?.some((check) => check.key === "self_service_tenant_activation" && check.ready)
   && saasReadiness.extensibility?.score >= 98
+  && saasReadiness.tenant_activation_gateway?.activation_package_score >= 100
+  && activationBlueprint.activation_package_score >= 100
+  && activationBlueprint.api_key_issuance?.secret_returned === false
+  && activationBlueprint.customer_gateway_setup?.ingress?.operator_routes_require_server_token === true
+  && activationRequest.activation_request_id
+  && activationRequest.activation_steps?.some((step) => step.title === "DUAL binding")
+  && activationApiKey.key_id
+  && activationApiKey.secret_returned === false
+  && activationDualBinding.dual_binding_id
+  && activationDualBinding.gateway_policy?.public_writes === false
   && extensibilityKit.extensibility_score >= 98
   && extensibilityKit.score_basis?.score_type === "computed_weighted_extensibility_controls"
   && extensionPack.extension_pack_id
@@ -163,6 +198,10 @@ const ok = Boolean(
   && mcp.tools?.includes("build_extension_pack")
   && mcp.tools?.includes("certify_source_adapter")
   && mcp.tools?.includes("plan_schema_migration")
+  && mcp.tools?.includes("get_tenant_activation_blueprint")
+  && mcp.tools?.includes("create_tenant_activation_request")
+  && mcp.tools?.includes("issue_tenant_api_key_preview")
+  && mcp.tools?.includes("bind_dual_tenant_gateway")
 );
 
 console.log(JSON.stringify({
@@ -191,6 +230,11 @@ console.log(JSON.stringify({
   saasPackageScore: saasReadiness.package_readiness_score,
   saasPackageScoreType: saasReadiness.package_readiness_basis.score_type,
   saasActivationScore: saasReadiness.tenant_activation_score,
+  tenantActivationPackageScore: activationBlueprint.activation_package_score,
+  tenantActivationScore: activationBlueprint.tenant_activation_score,
+  activationRequestId: activationRequest.activation_request_id,
+  activationApiKeyId: activationApiKey.key_id,
+  activationDualBindingId: activationDualBinding.dual_binding_id,
   extensibilityScore: extensibilityKit.extensibility_score,
   extensibilityScoreType: extensibilityKit.score_basis.score_type,
   extensionPackId: extensionPack.extension_pack_id,

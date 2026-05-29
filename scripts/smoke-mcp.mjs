@@ -14,9 +14,11 @@ const tools = await client.listTools();
 const toolNames = tools.tools.map((tool) => tool.name).sort();
 for (const required of [
   "attach_proof",
+  "bind_dual_tenant_gateway",
   "build_workflow_draft",
   "compose_proof_capsule",
   "compare_capsules",
+  "create_tenant_activation_request",
   "create_tenant_onboarding_plan",
   "create_capsule",
   "diagnose_capsule",
@@ -28,6 +30,7 @@ for (const required of [
   "get_proof_room",
   "get_public_verifier_page",
   "get_saas_readiness",
+  "get_tenant_activation_blueprint",
   "get_current_live_capsule",
   "get_capsule_handoff",
   "get_capsule_status",
@@ -40,6 +43,7 @@ for (const required of [
   "list_source_verifiers",
   "list_workflow_templates",
   "mint_proof_capsule_live",
+  "issue_tenant_api_key_preview",
   "build_extension_pack",
   "certify_source_adapter",
   "plan_schema_migration",
@@ -85,6 +89,10 @@ for (const required of [
   "capsule://proof-runbook",
   "capsule://proof-room",
   "capsule://agent-mode",
+  "capsule://activation/blueprint",
+  "capsule://activation/dual-binding",
+  "capsule://activation/gateway",
+  "capsule://activation/security",
   "capsule://scenario-marketplace",
   "capsule://saas/admin",
   "capsule://saas/onboarding",
@@ -115,7 +123,7 @@ if (!templates.resourceTemplates.some((template) => template.uriTemplate === "ca
 
 const prompts = await client.listPrompts();
 const promptNames = prompts.prompts.map((prompt) => prompt.name);
-for (const required of ["proof_capsule_review", "mcp_client_handoff", "red_team_capsule_boundary", "design_proof_capsule_workflow", "operate_capsule_transition", "compare_capsule_versions", "publish_proof_capsule_verifier_page", "supercharge_proof_capsule", "launch_proof_capsule_saas_tenant", "extend_proof_capsule_product"]) {
+for (const required of ["proof_capsule_review", "mcp_client_handoff", "red_team_capsule_boundary", "design_proof_capsule_workflow", "operate_capsule_transition", "compare_capsule_versions", "publish_proof_capsule_verifier_page", "supercharge_proof_capsule", "launch_proof_capsule_saas_tenant", "extend_proof_capsule_product", "activate_proof_capsule_tenant"]) {
   if (!promptNames.includes(required)) throw new Error(`Missing prompt: ${required}`);
 }
 
@@ -312,6 +320,60 @@ const adminPlane = await client.callTool({
 });
 if (!adminPlane.structuredContent?.admin_plane_id || !adminPlane.structuredContent?.ops_views?.length || !adminPlane.structuredContent?.audit_schema?.capsule_id) {
   throw new Error("Admin control plane is incomplete.");
+}
+
+const activationBlueprint = await client.callTool({
+  name: "get_tenant_activation_blueprint",
+  arguments: {
+    tenant_name: "Acme Proof Operations",
+    use_case: "multi-source proof rooms for regulated workflow decisions",
+    plan_id: "growth_control_plane",
+    sources: "dual, enterprise_vault, solana, ipfs, payment_preview"
+  }
+});
+if (
+  activationBlueprint.structuredContent?.activation_package_score < 100
+  || activationBlueprint.structuredContent?.api_key_issuance?.secret_returned !== false
+  || activationBlueprint.structuredContent?.customer_gateway_setup?.ingress?.operator_routes_require_server_token !== true
+) {
+  throw new Error("Tenant activation blueprint is incomplete.");
+}
+
+const activationRequest = await client.callTool({
+  name: "create_tenant_activation_request",
+  arguments: {
+    tenant_name: "Acme Proof Operations",
+    use_case: "multi-source proof rooms for regulated workflow decisions",
+    plan_id: "growth_control_plane",
+    sources: "dual, enterprise_vault, solana, ipfs, payment_preview",
+    endpoint: url
+  }
+});
+if (!activationRequest.structuredContent?.activation_request_id || !activationRequest.structuredContent?.activation_steps?.some((step) => step.title === "DUAL binding")) {
+  throw new Error("Tenant activation request is incomplete.");
+}
+
+const activationApiKey = await client.callTool({
+  name: "issue_tenant_api_key_preview",
+  arguments: {
+    tenant_name: "Acme Proof Operations",
+    workspace_id: activationRequest.structuredContent.workspace_id,
+    scopes: "capsule:read, capsule:run, proof:publish, gateway:adapter:onboard"
+  }
+});
+if (!activationApiKey.structuredContent?.key_id || activationApiKey.structuredContent?.secret_returned !== false) {
+  throw new Error("Tenant API-key preview returned an unsafe credential.");
+}
+
+const activationDualBinding = await client.callTool({
+  name: "bind_dual_tenant_gateway",
+  arguments: {
+    tenant_name: "Acme Proof Operations",
+    workspace_id: activationRequest.structuredContent.workspace_id
+  }
+});
+if (!activationDualBinding.structuredContent?.dual_binding_id || activationDualBinding.structuredContent?.gateway_policy?.public_writes !== false) {
+  throw new Error("DUAL tenant binding model is incomplete.");
 }
 
 const extensibilityKit = await client.callTool({
@@ -530,6 +592,11 @@ console.log(JSON.stringify({
   saasPackageScore: saasReadiness.structuredContent.package_readiness_score,
   saasPackageScoreType: saasReadiness.structuredContent.package_readiness_basis.score_type,
   saasActivationScore: saasReadiness.structuredContent.tenant_activation_score,
+  tenantActivationPackageScore: activationBlueprint.structuredContent.activation_package_score,
+  tenantActivationScore: activationBlueprint.structuredContent.tenant_activation_score,
+  activationRequestId: activationRequest.structuredContent.activation_request_id,
+  activationApiKeyId: activationApiKey.structuredContent.key_id,
+  activationDualBindingId: activationDualBinding.structuredContent.dual_binding_id,
   extensibilityScore: extensibilityKit.structuredContent.extensibility_score,
   extensibilityScoreType: extensibilityKit.structuredContent.score_basis.score_type,
   extensionPackId: extensionPack.structuredContent.extension_pack_id,
