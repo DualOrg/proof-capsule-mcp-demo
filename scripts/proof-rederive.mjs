@@ -230,7 +230,14 @@ if (saasPlans.plan_count < 3 || !saasPlans.plans.some((plan) => plan.plan_id ===
   throw new Error("SaaS plan catalogue is incomplete.");
 }
 
-if (!saasReadiness.sellable_now || saasReadiness.package_readiness_score < 98 || !saasReadiness.readiness_checks?.some((check) => check.key === "tenant_onboarding" && check.ready)) {
+if (
+  !saasReadiness.sellable_now
+  || saasReadiness.package_readiness_score < 98
+  || saasReadiness.package_readiness_basis?.score_type !== "computed_weighted_package_controls"
+  || !saasReadiness.package_readiness_basis?.checks?.some((check) => check.key === "pilot_sales_pack" && check.ready)
+  || !saasReadiness.package_readiness_basis?.holdbacks?.some((check) => check.key === "customer_gateway_activation")
+  || !saasReadiness.readiness_checks?.some((check) => check.key === "tenant_onboarding" && check.ready)
+) {
   throw new Error("SaaS readiness model is incomplete.");
 }
 
@@ -267,6 +274,7 @@ console.log(JSON.stringify({
   scenarioTemplateCount: scenarioMarketplace.template_count,
   saasPlanCount: saasPlans.plan_count,
   saasPackageScore: saasReadiness.package_readiness_score,
+  saasPackageScoreType: saasReadiness.package_readiness_basis.score_type,
   saasActivationScore: saasReadiness.tenant_activation_score,
   tenantWorkspaceId: tenantOnboarding.workspace_id,
   adminPlaneId: adminPlane.admin_plane_id,

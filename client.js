@@ -52,6 +52,41 @@ function displayToken(value) {
   return String(value ?? "-").replaceAll("_", " ");
 }
 
+function adapterStatusMeta(status, commercialStatus = "") {
+  const key = status || commercialStatus || "missing";
+  if (key === "configured_for_canonical_capsule" || commercialStatus === "production_reference_ready") {
+    return {
+      label: "Live DUAL",
+      className: "adapter-live",
+      detail: "Live DUAL readback configured for the canonical capsule."
+    };
+  }
+  if (key === "demo_reference" || commercialStatus === "demo_ready_adapter_next") {
+    return {
+      label: "Reference",
+      className: "adapter-demo",
+      detail: "Structured demo ref; tenant live adapter required before production reliance."
+    };
+  }
+  if (key === "adapter_required" || commercialStatus === "tenant_adapter_required") {
+    return {
+      label: "Adapter needed",
+      className: "adapter-required",
+      detail: "Tenant source adapter or signed feed must be connected."
+    };
+  }
+  return {
+    label: "Missing",
+    className: "adapter-missing",
+    detail: "No verifier contract is registered for this source."
+  };
+}
+
+function adapterBadgeHtml(status, commercialStatus = "") {
+  const meta = adapterStatusMeta(status, commercialStatus);
+  return `<span class="adapter-badge ${escapeAttribute(meta.className)}" title="${escapeAttribute(meta.detail)}">${escapeHtml(meta.label)}</span>`;
+}
+
 function safeExternalUrl(value) {
   try {
     const url = new URL(String(value || ""), window.location.origin);
@@ -336,9 +371,12 @@ function renderWorkflow(definition, replay = null) {
 
   $("sourceVerifierStack").innerHTML = (replay?.source_verifier_summary || definition.source_verifier_coverage || []).slice(0, 8).map((item) => `
     <div class="workflow-row">
-      <span>${escapeHtml(item.source)} / ${escapeHtml(item.mode || item.live_adapter_status)}</span>
+      <div class="row-kicker">
+        <span>${escapeHtml(item.source)} / ${escapeHtml(item.mode || item.live_adapter_status)}</span>
+        ${adapterBadgeHtml(item.live_adapter_status)}
+      </div>
       <strong>${escapeHtml(item.type || item.verifier_id || "verifier")}</strong>
-      <p>${escapeHtml(item.freshness_rule || item.live_adapter_status || "")}</p>
+      <p>${escapeHtml(item.adapter_disclosure || item.freshness_rule || item.live_adapter_status || "")}</p>
     </div>
   `).join("");
 }
@@ -359,7 +397,10 @@ function renderMarketplace(payload) {
   $("marketplaceStack").innerHTML = (payload.modules || []).slice(0, 20).map((item) => `
     <div class="module-row">
       <div>
-        <span>${escapeHtml(item.action_readiness)}</span>
+        <div class="row-kicker">
+          <span>${escapeHtml(item.action_readiness)}</span>
+          ${adapterBadgeHtml(item.live_adapter_status, item.action_readiness)}
+        </div>
         <strong>${escapeHtml(item.source)}</strong>
         <p>${escapeHtml(item.proves)}</p>
       </div>
@@ -406,8 +447,8 @@ function renderSaasDesk(readiness, plans, onboarding, admin) {
   $("saasSummary").innerHTML = [
     ["Product stage", displayToken(readiness.product_stage || "-")],
     ["Package readiness", `${readiness.package_readiness_score || "-"} / 100`],
+    ["Readiness basis", displayToken(readiness.package_readiness_basis?.score_type || "not declared")],
     ["Tenant activation", `${readiness.tenant_activation_score || "-"} / 100`],
-    ["Selling motion", readiness.selling_motion || "-"],
     ["First sale", readiness.launch_summary?.first_sale || "-"]
   ].map(([label, value]) => `
     <div class="saas-metric">
@@ -437,9 +478,12 @@ function renderSaasDesk(readiness, plans, onboarding, admin) {
 
   $("connectorStack").innerHTML = (readiness.connector_readiness || []).slice(0, 10).map((connector) => `
     <div class="saas-row ${connector.commercial_status === "production_reference_ready" ? "ready" : ""}">
-      <span>${escapeHtml(displayToken(connector.commercial_status))}</span>
+      <div class="row-kicker">
+        <span>${escapeHtml(displayToken(connector.commercial_status))}</span>
+        ${adapterBadgeHtml(connector.adapter_status, connector.commercial_status)}
+      </div>
       <strong>${escapeHtml(displayToken(connector.source))}</strong>
-      <p>${escapeHtml(connector.proves)}</p>
+      <p>${escapeHtml(connector.adapter_disclosure || connector.proves)}</p>
     </div>
   `).join("");
 
@@ -492,9 +536,12 @@ function renderProofRoom(roomPayload) {
   `).join("");
   $("proofRoomSources").innerHTML = (room.source_cards || []).slice(0, 10).map((card) => `
     <div class="workflow-row ${escapeAttribute(card.status)}">
-      <span>${escapeHtml(card.status)}</span>
+      <div class="row-kicker">
+        <span>${escapeHtml(card.status)}</span>
+        ${adapterBadgeHtml(card.adapter_status)}
+      </div>
       <strong>${escapeHtml(card.type)} / ${escapeHtml(card.source)}</strong>
-      <p>${escapeHtml(card.proves)}</p>
+      <p>${escapeHtml(card.adapter_disclosure || card.proves)}</p>
       <code>${escapeHtml(short(card.hash))}</code>
     </div>
   `).join("");
@@ -661,7 +708,10 @@ function renderProofRun(payload, outputTitle = "Proof run") {
   const sourceChecks = payload.evidence?.results || payload.sections?.source_checks || payload.public_verifier?.sections?.source_checks || [];
   $("proofRunSources").innerHTML = sourceChecks.slice(0, 8).map((item) => `
     <div class="workflow-row ${escapeAttribute(item.status)}">
-      <span>${escapeHtml(item.status)}</span>
+      <div class="row-kicker">
+        <span>${escapeHtml(item.status)}</span>
+        ${adapterBadgeHtml(item.adapter_status)}
+      </div>
       <strong>${escapeHtml(item.type)} / ${escapeHtml(item.source || "missing")}</strong>
       <p>${escapeHtml(item.recheck_rule || item.proves || "")}</p>
     </div>

@@ -4,7 +4,7 @@ Proof Capsule is the use-case-agnostic DUAL primitive behind TradeFlow-style pro
 
 This sandbox exposes that primitive through a Streamable HTTP MCP endpoint and a small UI. In production it can read from a live DUAL object and execute operator-gated event-bus mint/sync writes.
 
-The v0.7 model turns that surface into a SaaS package: universal multi-proof capsules, shareable proof rooms, scenario marketplace, agent-mode MCP aliases, workflow simulation, proof attachment, tenant onboarding, pricing/plan packaging, admin readiness, connector status, and the same operator-gated DUAL write boundary. Live writes remain operator-gated.
+The v0.7.1 model turns that surface into a SaaS package: universal multi-proof capsules, shareable proof rooms, scenario marketplace, agent-mode MCP aliases, workflow simulation, proof attachment, tenant onboarding, pricing/plan packaging, admin readiness, connector status, and the same operator-gated DUAL write boundary. Live writes remain operator-gated.
 
 ## Scope
 
@@ -176,14 +176,16 @@ Prompts:
 - `supercharge_proof_capsule`
 - `launch_proof_capsule_saas_tenant`
 
-## v0.7 SaaS Launch Desk
+## v0.7.1 SaaS Launch Desk
 
 The public app now shows a SaaS control plane, not just a proof demo:
 
 - **Commercial package:** Pilot room, Growth control plane, and Enterprise trust layer plans, with limits, selling motion, upgrade triggers, and customer-bound activation requirements.
 - **Tenant onboarding:** generates a workspace id, plan, workflow seed, connector plan, launch steps, MCP first calls, write policy, and data boundary for a customer tenant.
 - **Admin plane:** exposes launch readiness, proof operations, connector health, write governance, audit schema, support model, and incident runbook.
-- **Connector readiness:** distinguishes live DUAL readback from demo/source-reference adapters that need tenant-specific production integration.
+- **Connector readiness:** distinguishes live DUAL readback from demo/source-reference adapters that need tenant-specific production integration, both in the API payload and the visible UI badges.
+- **Computed readiness:** `package_readiness_score` is derived from weighted package controls, with customer auth/billing kept as a visible tenant-activation holdback instead of a hardcoded score.
+- **Pilot sales pack:** see [docs/proof-capsule-pilot-sales-pack.md](docs/proof-capsule-pilot-sales-pack.md) for buyer story, demo route, acceptance gates, and objection handling.
 
 The honest SaaS boundary is explicit:
 

@@ -97,6 +97,8 @@ const ok = Boolean(
   && scenarioMarketplace.template_count >= 7
   && saasReadiness.sellable_now
   && saasReadiness.package_readiness_score >= 98
+  && saasReadiness.package_readiness_basis?.score_type === "computed_weighted_package_controls"
+  && saasReadiness.package_readiness_basis?.checks?.some((check) => check.key === "connector_disclosure" && check.ready)
   && saasPlans.plan_count >= 3
   && tenantOnboarding.workspace_id
   && tenantOnboarding.launch_steps?.length >= 5
@@ -149,6 +151,7 @@ console.log(JSON.stringify({
   marketplaceModuleCount: marketplace.module_count,
   scenarioTemplateCount: scenarioMarketplace.template_count,
   saasPackageScore: saasReadiness.package_readiness_score,
+  saasPackageScoreType: saasReadiness.package_readiness_basis.score_type,
   saasActivationScore: saasReadiness.tenant_activation_score,
   saasPlanCount: saasPlans.plan_count,
   tenantWorkspaceId: tenantOnboarding.workspace_id,

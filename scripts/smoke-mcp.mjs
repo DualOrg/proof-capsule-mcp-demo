@@ -262,7 +262,12 @@ const saasReadiness = await client.callTool({
   name: "get_saas_readiness",
   arguments: { live_dual_readback: true, operator_gate_configured: true }
 });
-if (!saasReadiness.structuredContent?.sellable_now || saasReadiness.structuredContent?.package_readiness_score < 98) {
+if (
+  !saasReadiness.structuredContent?.sellable_now
+  || saasReadiness.structuredContent?.package_readiness_score < 98
+  || saasReadiness.structuredContent?.package_readiness_basis?.score_type !== "computed_weighted_package_controls"
+  || !saasReadiness.structuredContent?.package_readiness_basis?.checks?.some((check) => check.key === "connector_disclosure" && check.ready)
+) {
   throw new Error("SaaS readiness model is incomplete.");
 }
 
@@ -459,6 +464,7 @@ console.log(JSON.stringify({
   sourceVerifierCount: verifiers.structuredContent.verifier_count,
   marketplaceModuleCount: marketplace.structuredContent.module_count,
   saasPackageScore: saasReadiness.structuredContent.package_readiness_score,
+  saasPackageScoreType: saasReadiness.structuredContent.package_readiness_basis.score_type,
   saasActivationScore: saasReadiness.structuredContent.tenant_activation_score,
   saasPlanCount: saasPlans.structuredContent.plan_count,
   tenantWorkspaceId: tenantPlan.structuredContent.workspace_id,

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const SERVICE_NAME = "dual-proof-capsule-mcp";
-export const SERVICE_VERSION = "0.7.0";
+export const SERVICE_VERSION = "0.7.1";
 export const CAPSULE_SCHEMA_VERSION = "proof-capsule.v0.2";
 export const CUSTOM_WORKFLOW_SCHEMA_VERSION = "proof-capsule-workflow-draft.v0.2";
 export const GENERATED_AT = "2026-05-29T00:00:00.000Z";
@@ -101,7 +101,7 @@ export const SCENARIO_MARKETPLACE = [
   }
 ];
 
-export const SAAS_PACKAGE_VERSION = "proof-capsule-saas.v0.7";
+export const SAAS_PACKAGE_VERSION = "proof-capsule-saas.v0.7.1";
 
 export const SAAS_PLAN_CATALOG = [
   {
@@ -215,6 +215,11 @@ const SAAS_CONTROL_CATALOG = [
     area: "Operations",
     status: "packaged",
     evidence: "Readiness checks, launch sequence, recovery actions, audit schema, and incident path are exposed to the admin plane."
+  },
+  {
+    area: "Pilot sales pack",
+    status: "packaged",
+    evidence: "Pilot offer, buyer narrative, demo route, acceptance gates, and objection handling are documented for first-sale use."
   }
 ];
 
@@ -2012,7 +2017,7 @@ export function listScenarioMarketplace() {
   const scenarioSet = new Set(SCENARIOS);
   return {
     ok: true,
-    marketplace_id: "proof-capsule.scenario-marketplace.v0.7",
+    marketplace_id: "proof-capsule.scenario-marketplace.v0.7.1",
     template_count: SCENARIO_MARKETPLACE.length,
     launchable_count: SCENARIO_MARKETPLACE.filter((template) => scenarioSet.has(template.scenario)).length,
     templates: SCENARIO_MARKETPLACE.map((template) => ({
@@ -2090,19 +2095,46 @@ export function getSaasReadiness(input = {}) {
   const totalWeight = checks.reduce((sum, check) => sum + check.weight, 0);
   const readyWeight = checks.reduce((sum, check) => sum + (check.ready ? check.weight : 0), 0);
   const activationScore = Math.round((readyWeight / totalWeight) * 100);
-  const packageScore = 98;
-  const connectorReadiness = Object.values(SOURCE_VERIFIER_REGISTRY).map((verifier) => ({
-    source: verifier.source,
-    verifier_id: verifier.verifier_id,
-    adapter_status: verifier.live_adapter_status,
-    commercial_status: verifier.live_adapter_status === "configured_for_canonical_capsule"
-      ? "production_reference_ready"
-      : verifier.live_adapter_status === "demo_reference"
-        ? "demo_ready_adapter_next"
-        : "tenant_adapter_required",
-    proves: verifier.proves,
-    freshness_rule: verifier.freshness_rule
-  }));
+  const packageChecks = [
+    readinessCheck("proof_engine", "Proof engine", true, "ready", "Capsules compose, verify, replay, publish, compare, red-team, and expose re-derivable hashes.", 14),
+    readinessCheck("public_verifier", "Public verifier", true, "ready", "Read-only proof pages preserve DUAL/source links and reject tampered share links.", 12),
+    readinessCheck("mcp_api_parity", "MCP/API parity", advertisedToolCount >= 36, "ready", `${advertisedToolCount} tools plus REST endpoints expose the proof-room workflow.`, 12),
+    readinessCheck("scenario_marketplace", "Scenario marketplace", SCENARIO_MARKETPLACE.length >= 7, "ready", "Reusable templates cover universal, trade, ownership, mandate, insurance, carbon, and invoice workflows.", 8),
+    readinessCheck("proof_room_reviewer_flow", "Proof-room reviewer flow", true, "ready", "Reviewer mode, proof room, public verifier, timeline, source checks, and handoff packet are one route.", 8),
+    readinessCheck("tenant_onboarding", "Tenant onboarding", true, "packaged", "Tenant workspace, connector plan, workflow seed, launch sequence, and MCP first calls are generated.", 9),
+    readinessCheck("admin_plane", "Admin control plane", true, "packaged", "Launch readiness, proof ops, connector health, write governance, audit schema, and incident runbook are exposed.", 9),
+    readinessCheck("dual_readback", "DUAL readback", liveDualReadback, liveDualReadback ? "live" : "tenant_config_required", liveDualReadback ? "Live DUAL readback is configured for the canonical capsule." : "Configure a live DUAL object before claiming production package readiness.", 10),
+    readinessCheck("operator_gate", "Operator-gated writes", operatorGate, operatorGate ? "configured" : "tenant_config_required", operatorGate ? "Server-side write tools require the authorised operator path." : "Configure the operator gate before any production write path is enabled.", 7),
+    readinessCheck("connector_disclosure", "Connector disclosure", true, "ready", "Every source verifier carries an explicit live, demo-reference, or tenant-adapter-required status.", 5),
+    readinessCheck("pilot_sales_pack", "Pilot sales pack", true, "packaged", "The pilot sales pack defines the buyer story, offer, demo script, acceptance gates, and objection handling.", 4),
+    readinessCheck("customer_gateway_activation", "Customer gateway activation", customerAuth && billingConfigured, customerAuth && billingConfigured ? "configured" : "customer_boundary", customerAuth && billingConfigured ? "Customer auth and billing gateway are configured." : "The public package is sellable as an assisted pilot; customer auth, SSO, billing, and invoicing bind at tenant activation.", 2)
+  ];
+  const packageTotalWeight = packageChecks.reduce((sum, check) => sum + check.weight, 0);
+  const packageReadyWeight = packageChecks.reduce((sum, check) => sum + (check.ready ? check.weight : 0), 0);
+  const packageScore = Math.round((packageReadyWeight / packageTotalWeight) * 100);
+  const packageHoldbacks = packageChecks
+    .filter((check) => !check.ready)
+    .map((check) => ({
+      key: check.key,
+      area: check.area,
+      status: check.status,
+      weight: check.weight,
+      evidence: check.evidence
+    }));
+  const connectorReadiness = Object.values(SOURCE_VERIFIER_REGISTRY).map((verifier) => {
+    const adapter = adapterStatusDescriptor(verifier.live_adapter_status);
+    return {
+      source: verifier.source,
+      verifier_id: verifier.verifier_id,
+      adapter_status: verifier.live_adapter_status,
+      adapter_label: adapter.label,
+      adapter_disclosure: adapter.disclosure,
+      commercial_status: adapter.commercial_status,
+      action_required: adapter.action_required,
+      proves: verifier.proves,
+      freshness_rule: verifier.freshness_rule
+    };
+  });
 
   return {
     ok: true,
@@ -2111,6 +2143,15 @@ export function getSaasReadiness(input = {}) {
     sellable_now: true,
     selling_motion: "paid pilot -> repeatable SaaS tenant -> enterprise trust layer",
     package_readiness_score: packageScore,
+    package_readiness_basis: {
+      score_type: "computed_weighted_package_controls",
+      max_score: 100,
+      ready_weight: packageReadyWeight,
+      total_weight: packageTotalWeight,
+      checks: packageChecks,
+      holdbacks: packageHoldbacks,
+      note: "Package readiness is computed from product controls. Tenant activation is scored separately so auth, billing, SSO, and live non-DUAL adapters are not hidden."
+    },
     tenant_activation_score: activationScore,
     activation_status: activationScore >= 90
       ? "tenant_activation_ready"
@@ -2140,7 +2181,7 @@ export function getSaasReadiness(input = {}) {
       "Run proof-room acceptance and public verifier checks.",
       "Enable operator-gated production sync only after the customer's approval path is in place."
     ],
-    readiness_hash: hashValue({ package_version: SAAS_PACKAGE_VERSION, checks, packageScore, activationScore })
+    readiness_hash: hashValue({ package_version: SAAS_PACKAGE_VERSION, checks, packageChecks, packageScore, activationScore })
   };
 }
 
@@ -3282,8 +3323,8 @@ export function scorecard() {
   return {
     ok: true,
     score_target: 9.8,
-    score_claim: "v0.7_saas_productization_requires_cowork_gate",
-    scoring_note: "The v0.7 SaaS productization layer may only claim 9.8 after local/prod proof scripts pass and Claude Cowork independently agrees.",
+    score_claim: "v0.7.1_saas_hardening_requires_cowork_gate",
+    scoring_note: "The v0.7.1 SaaS hardening layer may only claim 9.8 after local/prod proof scripts pass and Claude Cowork independently agrees.",
     criteria: [
       { area: "MCP ergonomics", required: "Manifest, schema, resources, templates, prompts, read-only annotations, structured outputs." },
       { area: "Proof semantics", required: "Stable content hashes split from fresh envelope hashes; per-hash re-derivation." },
@@ -3382,11 +3423,15 @@ function buildProofRoomModel({
       || (item.type === ref.type && item.source === ref.source)
     ));
     const verifier = SOURCE_VERIFIER_REGISTRY[ref.source] || {};
+    const adapter = adapterStatusDescriptor(verifier.live_adapter_status);
     return {
       evidence_id: ref.evidence_id,
       type: ref.type,
       source: ref.source,
       status: result?.status || "unverified",
+      adapter_status: verifier.live_adapter_status || "missing",
+      adapter_label: adapter.label,
+      adapter_disclosure: adapter.disclosure,
       hash: ref.hash || null,
       ref: ref.ref || null,
       explorer_url: ref.explorer_url || null,
@@ -3505,6 +3550,39 @@ function readinessCheck(key, area, ready, status, evidence, weight) {
     status,
     evidence,
     weight
+  };
+}
+
+function adapterStatusDescriptor(status) {
+  if (status === "configured_for_canonical_capsule") {
+    return {
+      label: "Live DUAL",
+      commercial_status: "production_reference_ready",
+      action_required: "Use the configured live DUAL readback as the canonical capsule anchor.",
+      disclosure: "Live adapter configured for the canonical DUAL capsule object."
+    };
+  }
+  if (status === "demo_reference") {
+    return {
+      label: "Reference",
+      commercial_status: "demo_ready_adapter_next",
+      action_required: "Replace the demo reference with a tenant-specific live adapter or signed source feed before production reliance.",
+      disclosure: "Structured ref/hash is demo-ready, but the source is not re-queried live by this public package."
+    };
+  }
+  if (status === "adapter_required") {
+    return {
+      label: "Adapter needed",
+      commercial_status: "tenant_adapter_required",
+      action_required: "Connect a tenant adapter or signed attestation feed before action-critical reliance.",
+      disclosure: "A production verifier must query or receive signed facts from this source system."
+    };
+  }
+  return {
+    label: "Missing",
+    commercial_status: "not_registered",
+    action_required: "Register a verifier contract before relying on this source.",
+    disclosure: "No source verifier is registered."
   };
 }
 
@@ -3719,6 +3797,7 @@ function pointInTimeSource(source) {
 function summarizeSourceVerifiers(capsule) {
   return (capsule.evidence_refs || []).map((ref) => {
     const verifier = SOURCE_VERIFIER_REGISTRY[ref.source];
+    const adapter = adapterStatusDescriptor(verifier?.live_adapter_status);
     return {
       evidence_id: ref.evidence_id,
       type: ref.type,
@@ -3726,6 +3805,8 @@ function summarizeSourceVerifiers(capsule) {
       verifier_id: verifier?.verifier_id || "missing",
       mode: verifier?.mode || "not_registered",
       live_adapter_status: verifier?.live_adapter_status || "missing",
+      adapter_label: adapter.label,
+      adapter_disclosure: adapter.disclosure,
       proves: verifier?.proves || "No verifier contract registered.",
       freshness_rule: verifier?.freshness_rule || "Register a verifier before relying on this source."
     };

@@ -502,6 +502,15 @@ body {
   grid-template-columns: 1.1fr 1fr 1.1fr;
 }
 
+.proof-run-grid > *,
+.proof-room-grid > *,
+.saas-grid > *,
+.workspace > *,
+.workflow-grid > *,
+.operations-grid > * {
+  min-width: 0;
+}
+
 .proof-room-grid {
   display: grid;
   gap: 14px;
@@ -569,6 +578,7 @@ select,
 input,
 button {
   width: 100%;
+  min-width: 0;
   min-height: 40px;
   border-radius: 6px;
   font: inherit;
@@ -838,6 +848,12 @@ h3 {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.workflow-row code {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .workflow-row.current {
@@ -1216,9 +1232,67 @@ body.public-mode .proof-run-grid {
   line-height: 1.35;
 }
 
+.row-kicker {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.adapter-badge {
+  align-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  min-height: 18px;
+  padding: 3px 7px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.workflow-row .adapter-badge,
+.module-row .adapter-badge,
+.saas-row .adapter-badge {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.adapter-badge.adapter-live {
+  background: var(--mint);
+  border-color: #97d7b5;
+  color: #145d3b;
+}
+
+.adapter-badge.adapter-demo {
+  background: #eef8fa;
+  border-color: #9bdbe2;
+  color: var(--teal-dark);
+}
+
+.adapter-badge.adapter-required {
+  background: var(--amber);
+  border-color: #efc95e;
+  color: #785000;
+}
+
+.adapter-badge.adapter-missing {
+  background: var(--rose);
+  border-color: #efb0b0;
+  color: #9a3030;
+}
+
 pre {
   max-height: 440px;
+  max-width: 100%;
   overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
   margin: 0;
   padding: 14px;
   border-radius: 6px;
