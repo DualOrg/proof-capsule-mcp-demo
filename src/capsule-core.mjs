@@ -1486,8 +1486,8 @@ export function getWorkflowDefinition(input = {}) {
 
 export function replayWorkflowCapsule(input = {}) {
   const capsule = input.capsule?.schema_version ? input.capsule : composeProofCapsule(input);
-  const scenario = normalizeScenario(input.scenario || scenarioFromCapsule(capsule));
-  const workflow = getWorkflowDefinition({ scenario });
+  const scenario = resolveWorkflowScenario(input, capsule);
+  const workflow = resolveWorkflowDefinition(input, capsule, scenario);
   const transition = findWorkflowTransition(workflow, capsule.state_transition);
   const workflowStates = new Set(workflow.states || []);
   const stateTransition = capsule.state_transition || {};
@@ -1604,8 +1604,8 @@ export function listVerifierMarketplace(input = {}) {
 
 export function verifyEvidenceRefs(input = {}) {
   const capsule = input.capsule?.schema_version ? input.capsule : composeProofCapsule(input);
-  const scenario = normalizeScenario(input.scenario || scenarioFromCapsule(capsule));
-  const workflow = getWorkflowDefinition({ scenario });
+  const scenario = resolveWorkflowScenario(input, capsule);
+  const workflow = resolveWorkflowDefinition(input, capsule, scenario);
   const transition = findWorkflowTransition(workflow, capsule.state_transition);
   const requiredEvidence = input.required_evidence || transition?.required_evidence || capsule.policy?.required_anchor_types || [];
   const normalizedRefs = (input.evidence_refs || capsule.evidence_refs || []).map((ref) => normalizeEvidenceRef(ref));
@@ -1801,8 +1801,8 @@ export function buildWorkflowDraft(input = {}) {
 
 export function planTransitionQueue(input = {}) {
   const capsule = input.capsule?.schema_version ? input.capsule : composeProofCapsule(input);
-  const scenario = normalizeScenario(input.scenario || scenarioFromCapsule(capsule));
-  const workflow = getWorkflowDefinition({ scenario });
+  const scenario = resolveWorkflowScenario(input, capsule);
+  const workflow = resolveWorkflowDefinition(input, capsule, scenario);
   const mergedEvidence = [
     ...(capsule.evidence_refs || []),
     ...(input.evidence_refs || [])
@@ -1842,8 +1842,8 @@ export function planTransitionQueue(input = {}) {
     },
     generated_at: input.generated_at || new Date().toISOString()
   });
-  const evidence = verifyEvidenceRefs({ scenario, capsule: queuedCapsule, required_evidence: transition?.required_evidence });
-  const replay = replayWorkflowCapsule({ scenario, capsule: queuedCapsule });
+  const evidence = verifyEvidenceRefs({ scenario, capsule: queuedCapsule, workflow_definition: workflow, required_evidence: transition?.required_evidence });
+  const replay = replayWorkflowCapsule({ scenario, capsule: queuedCapsule, workflow_definition: workflow });
   const verification = verifyProofCapsule({ capsule: queuedCapsule });
   const status = transition && evidence.ok && replay.ok && verification.accepted
     ? "ready_for_operator_sync"
@@ -1877,15 +1877,16 @@ export function planTransitionQueue(input = {}) {
         }
       }
     },
-    recovery_actions: diagnoseCapsule({ scenario, capsule: queuedCapsule }).recovery_actions
+    recovery_actions: diagnoseCapsule({ scenario, capsule: queuedCapsule, workflow_definition: workflow }).recovery_actions
   };
 }
 
 export function diagnoseCapsule(input = {}) {
   const capsule = input.capsule?.schema_version ? input.capsule : composeProofCapsule(input);
-  const scenario = normalizeScenario(input.scenario || scenarioFromCapsule(capsule));
-  const evidence = verifyEvidenceRefs({ scenario, capsule });
-  const replay = replayWorkflowCapsule({ scenario, capsule });
+  const scenario = resolveWorkflowScenario(input, capsule);
+  const workflow = resolveWorkflowDefinition(input, capsule, scenario);
+  const evidence = verifyEvidenceRefs({ scenario, capsule, workflow_definition: workflow });
+  const replay = replayWorkflowCapsule({ scenario, capsule, workflow_definition: workflow });
   const policy = evaluateCapsulePolicy({ capsule });
   const failures = [
     ...evidence.results
@@ -1936,8 +1937,9 @@ export function diagnoseCapsule(input = {}) {
 
 export function buildProofTimeline(input = {}) {
   const capsule = input.capsule?.schema_version ? input.capsule : composeProofCapsule(input);
-  const scenario = normalizeScenario(input.scenario || scenarioFromCapsule(capsule));
-  const replay = replayWorkflowCapsule({ scenario, capsule });
+  const scenario = resolveWorkflowScenario(input, capsule);
+  const workflow = resolveWorkflowDefinition(input, capsule, scenario);
+  const replay = replayWorkflowCapsule({ scenario, capsule, workflow_definition: workflow });
   const events = replay.state_timeline.map((entry) => ({
     state: entry.state,
     index: entry.index,
@@ -2031,12 +2033,14 @@ export function compareCapsules(input = {}) {
 
 export function generateAgentHandoffPack(input = {}) {
   const capsule = input.capsule?.schema_version ? input.capsule : composeProofCapsule(input);
-  const scenario = normalizeScenario(input.scenario || scenarioFromCapsule(capsule));
+  const scenario = resolveWorkflowScenario(input, capsule);
   const endpoint = input.endpoint || "https://proof-capsule-mcp-demo.vercel.app/mcp";
-  const replay = replayWorkflowCapsule({ scenario, capsule });
-  const evidence = verifyEvidenceRefs({ scenario, capsule });
-  const diagnosis = diagnoseCapsule({ scenario, capsule });
-  const timeline = buildProofTimeline({ scenario, capsule });
+  const workflow = resolveWorkflowDefinition(input, capsule, scenario);
+  const replay = replayWorkflowCapsule({ scenario, capsule, workflow_definition: workflow });
+  const evidence = verifyEvidenceRefs({ scenario, capsule, workflow_definition: workflow });
+  const diagnosis = diagnoseCapsule({ scenario, capsule, workflow_definition: workflow });
+  const timeline = buildProofTimeline({ scenario, capsule, workflow_definition: workflow });
+  const workflowArgument = input.workflow_definition?.workflow_id ? { workflow_definition: workflow } : {};
 
   return {
     ok: true,
@@ -2051,10 +2055,10 @@ export function generateAgentHandoffPack(input = {}) {
     mcp_calls: [
       { tool: "get_capsule_status", arguments: {} },
       { tool: "verify_proof_capsule", arguments: { capsule } },
-      { tool: "replay_workflow_capsule", arguments: { scenario, capsule } },
-      { tool: "get_proof_timeline", arguments: { scenario, capsule } },
-      { tool: "diagnose_capsule", arguments: { scenario, capsule } },
-      { tool: "plan_transition_queue", arguments: { scenario, capsule } }
+      { tool: "replay_workflow_capsule", arguments: { scenario, capsule, ...workflowArgument } },
+      { tool: "get_proof_timeline", arguments: { scenario, capsule, ...workflowArgument } },
+      { tool: "diagnose_capsule", arguments: { scenario, capsule, ...workflowArgument } },
+      { tool: "plan_transition_queue", arguments: { scenario, capsule, ...workflowArgument } }
     ],
     resources: [
       "capsule://manifest",
@@ -2357,6 +2361,41 @@ function findNextWorkflowTransition(workflow, options = {}) {
     if (byState) return byState;
   }
   return transitions[0] || null;
+}
+
+function resolveWorkflowScenario(input = {}, capsule = {}) {
+  if (input.workflow_definition?.workflow_id) {
+    return input.workflow_definition.scenario || "custom_workflow";
+  }
+  return normalizeScenario(input.scenario || scenarioFromCapsule(capsule));
+}
+
+function resolveWorkflowDefinition(input = {}, capsule = {}, scenario = "tradeflow_medical_devices") {
+  if (input.workflow_definition?.workflow_id) {
+    const workflow = structuredClone(input.workflow_definition);
+    return {
+      ok: true,
+      scenario,
+      required_evidence_types: Array.from(new Set((workflow.transitions || []).flatMap((transition) => transition.required_evidence || []))).sort(),
+      source_verifier_coverage: summarizeSourceVerifiers(capsule),
+      workflow_hash: hashValue({
+        scenario,
+        workflow_id: workflow.workflow_id,
+        states: workflow.states,
+        transitions: workflow.transitions
+      }),
+      dual_build_contract: workflow.dual_build_contract || {
+        template: workflow.dual_template || "io.dual.proof_capsule.lifecycle.v1",
+        object: "one DUAL object per workflow instance",
+        write_path: "event_bus",
+        write_execution: "operator_gated",
+        public_writes: false,
+        readback_required_after_write: true
+      },
+      ...workflow
+    };
+  }
+  return getWorkflowDefinition({ scenario });
 }
 
 function buildRecoveryActions({ failures, evidence, replay, policy }) {

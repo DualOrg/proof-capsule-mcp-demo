@@ -561,7 +561,8 @@ export function createMcpServer() {
       description: "Replay a capsule through its DUAL workflow definition: transition, evidence, source verifier, policy, hash, and write-boundary checks.",
       inputSchema: {
         capsule: z.record(z.string(), z.unknown()).optional(),
-        scenario: scenarioSchema.optional()
+        scenario: scenarioSchema.optional(),
+        workflow_definition: z.record(z.string(), z.unknown()).optional()
       },
       annotations: READ_ONLY_ANNOTATIONS,
       _meta: TOOL_META
@@ -604,6 +605,7 @@ export function createMcpServer() {
       inputSchema: {
         scenario: scenarioSchema.optional(),
         capsule: z.record(z.string(), z.unknown()).optional(),
+        workflow_definition: z.record(z.string(), z.unknown()).optional(),
         evidence_refs: z.array(z.record(z.string(), z.unknown())).optional(),
         required_evidence: z.array(z.string()).optional()
       },
@@ -650,6 +652,7 @@ export function createMcpServer() {
       inputSchema: {
         scenario: scenarioSchema.optional(),
         capsule: z.record(z.string(), z.unknown()).optional(),
+        workflow_definition: z.record(z.string(), z.unknown()).optional(),
         evidence_refs: z.array(z.record(z.string(), z.unknown())).optional(),
         action: z.string().optional(),
         transition_action: z.string().optional(),
@@ -670,7 +673,8 @@ export function createMcpServer() {
       description: "Return failure and recovery actions for evidence, policy, workflow replay, and transition issues.",
       inputSchema: {
         scenario: scenarioSchema.optional(),
-        capsule: z.record(z.string(), z.unknown()).optional()
+        capsule: z.record(z.string(), z.unknown()).optional(),
+        workflow_definition: z.record(z.string(), z.unknown()).optional()
       },
       annotations: READ_ONLY_ANNOTATIONS,
       _meta: TOOL_META
@@ -685,7 +689,8 @@ export function createMcpServer() {
       description: "Return a lifecycle timeline with state, evidence, decision, hash, and DUAL link context.",
       inputSchema: {
         scenario: scenarioSchema.optional(),
-        capsule: z.record(z.string(), z.unknown()).optional()
+        capsule: z.record(z.string(), z.unknown()).optional(),
+        workflow_definition: z.record(z.string(), z.unknown()).optional()
       },
       annotations: READ_ONLY_ANNOTATIONS,
       _meta: TOOL_META
@@ -719,6 +724,7 @@ export function createMcpServer() {
       inputSchema: {
         scenario: scenarioSchema.optional(),
         capsule: z.record(z.string(), z.unknown()).optional(),
+        workflow_definition: z.record(z.string(), z.unknown()).optional(),
         endpoint: z.string().optional()
       },
       annotations: READ_ONLY_ANNOTATIONS,

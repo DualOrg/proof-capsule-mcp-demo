@@ -294,6 +294,7 @@ async function loadStatus() {
 async function compose() {
   const payload = await jsonFetch(`/api/capsule/demo?scenario=${encodeURIComponent(scenario())}`);
   compareBase = null;
+  currentWorkflow = null;
   renderCapsule(payload.capsule, "Composed Proof Capsule JSON");
   await refreshOperationalPanels(payload.capsule);
 }
@@ -326,6 +327,14 @@ async function loadCurrentLive() {
 }
 
 async function loadWorkflow(capsule = currentCapsule) {
+  if (currentWorkflow?.schema_version && capsule?.capsule_id?.startsWith("PC-CUSTOM-")) {
+    const replay = await jsonFetch("/api/workflow/replay", {
+      method: "POST",
+      body: JSON.stringify({ scenario: "custom_workflow", capsule, workflow_definition: currentWorkflow })
+    });
+    renderWorkflow(currentWorkflow, replay);
+    return { definition: currentWorkflow, replay };
+  }
   const [definition, replay] = await Promise.all([
     jsonFetch(`/api/workflow/definition?scenario=${encodeURIComponent(scenario())}`),
     jsonFetch("/api/workflow/replay", {
@@ -340,7 +349,7 @@ async function loadWorkflow(capsule = currentCapsule) {
 async function verifyEvidence() {
   const payload = await jsonFetch("/api/evidence/verify", {
     method: "POST",
-    body: JSON.stringify({ scenario: scenario(), capsule: currentCapsule })
+    body: JSON.stringify({ scenario: scenario(), capsule: currentCapsule, workflow_definition: currentWorkflow || undefined })
   });
   renderEvidenceVerification(payload);
   return payload;
@@ -355,7 +364,7 @@ async function loadMarketplace() {
 async function loadTimeline() {
   const payload = await jsonFetch("/api/capsule/timeline", {
     method: "POST",
-    body: JSON.stringify({ scenario: scenario(), capsule: currentCapsule })
+    body: JSON.stringify({ scenario: scenario(), capsule: currentCapsule, workflow_definition: currentWorkflow || undefined })
   });
   renderTimeline(payload);
   return payload;
@@ -427,6 +436,7 @@ async function planTransition() {
     body: JSON.stringify({
       scenario: scenario(),
       capsule: currentCapsule,
+      workflow_definition: currentWorkflow || undefined,
       action: $("transitionAction").value.trim() || undefined
     })
   });
@@ -496,7 +506,7 @@ async function mintLive() {
 async function diagnose(showOutput = true) {
   const payload = await jsonFetch("/api/capsule/diagnose", {
     method: "POST",
-    body: JSON.stringify({ scenario: scenario(), capsule: currentCapsule })
+    body: JSON.stringify({ scenario: scenario(), capsule: currentCapsule, workflow_definition: currentWorkflow || undefined })
   });
   renderDiagnosis(payload);
   if (showOutput) {
@@ -538,6 +548,7 @@ async function generateHandoff() {
     body: JSON.stringify({
       scenario: scenario(),
       capsule: currentCapsule,
+      workflow_definition: currentWorkflow || undefined,
       endpoint: `${window.location.origin}/mcp`
     })
   });
