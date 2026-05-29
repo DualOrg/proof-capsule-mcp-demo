@@ -66,7 +66,7 @@ const reviewerSteps = [
     body: "Start with one of the five demo workflows. Each one composes a different proof capsule shape while keeping the same DUAL verifier boundary.",
     facts: () => [
       ["Scenario", $("scenarioLabel")?.textContent || "Loading"],
-      ["MCP", "24 tools"],
+      ["MCP", "32 tools"],
       ["Public writes", "false"],
       ["Mode", liveStatus?.mode || "checking"]
     ]
@@ -351,6 +351,78 @@ function renderMarketplace(payload) {
   });
 }
 
+function renderScenarioMarketplace(payload) {
+  $("scenarioMarketStatus").textContent = `${payload.launchable_count || 0} launchable`;
+  $("scenarioMarketplaceStack").innerHTML = (payload.templates || []).map((item) => `
+    <div class="module-row">
+      <div>
+        <span>${escapeHtml(item.status)}</span>
+        <strong>${escapeHtml(item.label)}</strong>
+        <p>${escapeHtml(item.use_case)}</p>
+      </div>
+      <button type="button" data-scenario="${escapeAttribute(item.scenario)}" ${item.launchable ? "" : "disabled"}>Open</button>
+    </div>
+  `).join("");
+  $("scenarioMarketplaceStack").querySelectorAll("button[data-scenario]").forEach((button) => {
+    button.addEventListener("click", () => {
+      $("scenarioSelect").value = button.dataset.scenario;
+      compose().catch(showError);
+    });
+  });
+}
+
+function renderProofRoom(roomPayload) {
+  const room = roomPayload?.proof_room || roomPayload?.public_verifier?.proof_room || roomPayload?.sections?.proof_room;
+  if (!room) return;
+  const linkStatus = roomPayload?.link_integrity?.status || roomPayload?.public_verifier?.link_integrity?.status || "";
+  $("proofRoomPanel").hidden = false;
+  $("proofRoomStatus").textContent = roomPayload?.ok === false
+    ? `${linkStatus || "link_mismatch"} / do not rely`
+    : `${room.decision?.proof_grade || "verifier"} / ${room.decision?.proof_score ?? "-"}%`;
+  $("proofRoomStatus").className = roomPayload?.ok === false ? "warn-text" : "safe-text";
+  $("proofRoomSummary").innerHTML = [
+    ["Room", room.room_id],
+    ["Decision", `${room.decision?.result || "-"} / ${room.decision?.code || "-"}`],
+    ["Sources", `${room.source_cards?.length || 0} cards`],
+    ["DUAL links", `${room.dual_links?.length || 0}`],
+    ["Public writes", "false"]
+  ].map(([label, value]) => `
+    <div class="proof-metric">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `).join("");
+  $("proofRoomSources").innerHTML = (room.source_cards || []).slice(0, 10).map((card) => `
+    <div class="workflow-row ${escapeAttribute(card.status)}">
+      <span>${escapeHtml(card.status)}</span>
+      <strong>${escapeHtml(card.type)} / ${escapeHtml(card.source)}</strong>
+      <p>${escapeHtml(card.proves)}</p>
+      <code>${escapeHtml(short(card.hash))}</code>
+    </div>
+  `).join("");
+  $("proofRoomProves").innerHTML = [
+    ...(room.what_this_proves || []).map((item) => ({ label: "Proves", detail: item, ok: true })),
+    ...(room.what_this_does_not_prove || []).map((item) => ({ label: "Limit", detail: item, ok: false }))
+  ].map((item) => `
+    <div class="support-check ${item.ok ? "" : "warn"}">
+      <strong>${escapeHtml(item.label)}</strong>
+      <span>${escapeHtml(item.detail)}</span>
+    </div>
+  `).join("");
+  $("proofRoomAgent").innerHTML = [
+    ["MCP", room.agent_mode?.endpoint || `${window.location.origin}/mcp`],
+    ["Read tools", (room.agent_mode?.read_tools || []).slice(0, 4).join(", ")],
+    ["Write tools", (room.agent_mode?.write_tools || []).join(", ")],
+    ["Next", room.operator_console?.next_safe_action || "-"],
+    ["Queue", room.operator_console?.queued_transition || "-"]
+  ].map(([label, value]) => `
+    <div class="hash-row">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `).join("");
+}
+
 function renderTransitionPlan(payload) {
   lastTransitionPlan = payload;
   $("transitionStatus").textContent = payload.status;
@@ -440,11 +512,14 @@ function renderHandoff(payload) {
 function renderProofRun(payload, outputTitle = "Proof run") {
   lastProofRun = payload;
   const writeExecution = payload.write_boundary?.write_execution || payload.capsule?.write_boundary?.write_execution || "";
+  const linkStatus = payload.link_integrity?.status || payload.public_verifier?.link_integrity?.status || "";
   const boundaryLabel = !writeExecution || writeExecution === "none"
     ? "public writes off"
     : writeExecution;
   $("proofRunPanel").hidden = false;
-  $("proofRunStatus").textContent = `${payload.status || payload.proof_score?.status || "ready"} / ${payload.proof_score?.score ?? "-"}%`;
+  $("proofRunStatus").textContent = payload.ok === false
+    ? `${linkStatus || "link_mismatch"} / do not rely`
+    : `${payload.status || payload.proof_score?.status || "ready"} / ${payload.proof_score?.score ?? "-"}%`;
   $("proofRunStatus").className = payload.ok === false ? "warn-text" : "safe-text";
   $("proofRunMetrics").innerHTML = [
     ["Proof", payload.public_proof_id || payload.public_verifier?.public_proof_id || payload.run_id || "-"],
@@ -496,6 +571,7 @@ function renderProofRun(payload, outputTitle = "Proof run") {
 
   $("outputTitle").textContent = outputTitle;
   $("output").textContent = JSON.stringify(payload, null, 2);
+  renderProofRoom(payload);
   refreshReviewChrome();
 }
 
@@ -614,6 +690,12 @@ async function loadMarketplace() {
   return payload;
 }
 
+async function loadScenarioMarketplace() {
+  const payload = await jsonFetch("/api/scenarios/marketplace");
+  renderScenarioMarketplace(payload);
+  return payload;
+}
+
 async function loadTimeline() {
   const payload = await jsonFetch("/api/capsule/timeline", {
     method: "POST",
@@ -649,6 +731,7 @@ async function runProof() {
 }
 
 function scenarioFromProofPath(capsuleId = "") {
+  if (capsuleId.includes("UNIVERSAL") || capsuleId.includes("MULTI-PROOF")) return "universal_proof_capsule";
   if (capsuleId.includes("INSURANCE")) return "insurance_claim";
   if (capsuleId.includes("AGENT-MANDATE")) return "agent_mandate_purchase";
   if (capsuleId.includes("LUXURY")) return "luxury_resale";
@@ -674,6 +757,7 @@ async function loadPublicProofRoute() {
   document.querySelector(".intro .lede").textContent = "This public page re-derives the capsule, source checks, policy decision, workflow replay, and link integrity without exposing any write action.";
   renderCapsule(payload.capsule, "Public verifier page");
   renderProofRun(payload, "Public verifier page");
+  renderProofRoom(payload);
   renderPublicVerifierBanner(payload);
   renderEvidenceVerification({ ok: payload.sections?.source_checks?.every((item) => item.status === "verified"), results: payload.sections?.source_checks || [] });
   renderTimeline({ events: payload.sections?.timeline || [] });
@@ -948,7 +1032,11 @@ $("scenarioSelect").addEventListener("change", () => compose().catch(showError))
 Promise.resolve()
   .then(loadStatus)
   .then(async (status) => {
+    await loadScenarioMarketplace();
+    return status;
+  })
+  .then(async (status) => {
     const routed = await loadPublicProofRoute();
-    if (!routed) return status.readbackReady ? loadCurrentLive() : compose();
+    if (!routed) return compose();
   })
   .catch(showError);

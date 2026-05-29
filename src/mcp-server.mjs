@@ -7,25 +7,32 @@ import {
   SERVICE_NAME,
   SERVICE_VERSION,
   WRITE_BOUNDARY,
+  attachProofToCapsule,
   buildProofTimeline,
+  buildProofRoom,
   buildPublicVerifierPage,
   buildWorkflowDraft,
   capsuleToMarkdown,
   compareCapsules,
   composeProofCapsule,
+  createCapsule,
   defaultPolicy,
   diagnoseCapsule,
+  evaluateGate,
   evaluateCapsulePolicy,
   generateAgentHandoffPack,
   getWorkflowDefinition,
   handoff,
+  listScenarioMarketplace,
   listVerifierMarketplace,
   listSourceVerifiers,
   listWorkflowTemplates,
   planTransitionQueue,
+  publishPublicProof,
   redTeamCapsule,
   replayWorkflowCapsule,
   runProofCapsule,
+  simulateWorkflow,
   scorecard,
   verifyEvidenceRefs,
   verifyProofCapsule
@@ -242,6 +249,17 @@ export function createMcpServer() {
   );
 
   server.registerResource(
+    "scenario-marketplace",
+    "capsule://scenario-marketplace",
+    {
+      title: "Proof Capsule Scenario Marketplace",
+      description: "Use-case templates for trade, ownership, agent mandates, insurance, carbon, invoice/payment release, and universal multi-proof capsules.",
+      mimeType: "application/json"
+    },
+    async (uri) => ({ contents: [{ uri: uri.href, text: JSON.stringify(listScenarioMarketplace(), null, 2) }] })
+  );
+
+  server.registerResource(
     "source-verifiers",
     "capsule://source-verifiers",
     {
@@ -261,6 +279,51 @@ export function createMcpServer() {
       mimeType: "application/json"
     },
     async (uri) => ({ contents: [{ uri: uri.href, text: JSON.stringify(listVerifierMarketplace(), null, 2) }] })
+  );
+
+  server.registerResource(
+    "proof-room",
+    "capsule://proof-room",
+    {
+      title: "Universal Proof Capsule Room",
+      description: "Shareable proof room for the flagship universal multi-proof capsule.",
+      mimeType: "application/json"
+    },
+    async (uri) => ({
+      contents: [{
+        uri: uri.href,
+        text: JSON.stringify(buildProofRoom({
+          scenario: "universal_proof_capsule",
+          base_url: "https://proof-capsule-mcp-demo.vercel.app",
+          endpoint: "https://proof-capsule-mcp-demo.vercel.app/mcp"
+        }), null, 2)
+      }]
+    })
+  );
+
+  server.registerResource(
+    "agent-mode",
+    "capsule://agent-mode",
+    {
+      title: "Proof Capsule Agent Mode",
+      description: "Agent-facing read/write boundary and recommended MCP tool sequence.",
+      mimeType: "application/json"
+    },
+    async (uri) => ({
+      contents: [{
+        uri: uri.href,
+        text: JSON.stringify({
+          ok: true,
+          mode: "agent_operable_verifier",
+          read_tools: ["create_capsule", "attach_proof", "evaluate_gate", "simulate_workflow", "verify_capsule", "publish_public_proof", "compare_capsules", "red_team_capsule"],
+          write_tools: ["sync_proof_capsule_live", "mint_proof_capsule_live"],
+          default_sequence: ["create_capsule", "attach_proof", "evaluate_gate", "simulate_workflow", "verify_capsule", "publish_public_proof"],
+          public_writes: false,
+          operator_gate: "required for write tools",
+          boundary: WRITE_BOUNDARY
+        }, null, 2)
+      }]
+    })
   );
 
   server.registerResource(
@@ -446,6 +509,39 @@ export function createMcpServer() {
     })
   );
 
+  server.registerResource(
+    "proof-room-template",
+    new ResourceTemplate("capsule://proof-room/{scenario}", {
+      list: async () => ({
+        resources: SCENARIOS.map((scenario) => ({
+          uri: `capsule://proof-room/${scenario}`,
+          name: `${scenario}-proof-room`,
+          title: `${scenario.replaceAll("_", " ")} Proof Room`,
+          description: "Shareable proof room model for this Proof Capsule scenario.",
+          mimeType: "application/json"
+        }))
+      }),
+      complete: {
+        scenario: (value) => SCENARIOS.filter((scenario) => scenario.startsWith(value || ""))
+      }
+    }),
+    {
+      title: "Scenario Proof Room",
+      description: "Read a shareable proof room model by scenario slug.",
+      mimeType: "application/json"
+    },
+    async (uri, variables) => ({
+      contents: [{
+        uri: uri.href,
+        text: JSON.stringify(buildProofRoom({
+          scenario: variables.scenario,
+          base_url: "https://proof-capsule-mcp-demo.vercel.app",
+          endpoint: "https://proof-capsule-mcp-demo.vercel.app/mcp"
+        }), null, 2)
+      }]
+    })
+  );
+
   server.registerTool(
     "get_capsule_status",
     {
@@ -483,6 +579,97 @@ export function createMcpServer() {
       _meta: TOOL_META
     },
     async (input) => jsonText(await getCurrentCapsuleLive(input))
+  );
+
+  server.registerTool(
+    "create_capsule",
+    {
+      title: "Create Capsule",
+      description: "Agent-friendly alias for composing a capsule, verifying it, and returning the proof-room model.",
+      inputSchema: capsuleInputSchema(),
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(createCapsule(input))
+  );
+
+  server.registerTool(
+    "attach_proof",
+    {
+      title: "Attach Proof",
+      description: "Attach an evidence/proof reference to a capsule, recompose hashes, and re-check evidence sufficiency.",
+      inputSchema: {
+        capsule: z.record(z.string(), z.unknown()).optional(),
+        scenario: scenarioSchema.optional(),
+        proof_ref: z.record(z.string(), z.unknown()).optional(),
+        evidence_ref: z.record(z.string(), z.unknown()).optional(),
+        evidence_id: z.string().optional(),
+        type: z.string().optional(),
+        source: z.string().optional(),
+        summary: z.string().optional(),
+        ref: z.string().optional(),
+        uri: z.string().optional(),
+        hash: z.string().optional(),
+        explorer_url: z.string().url().optional(),
+        workflow_definition: z.record(z.string(), z.unknown()).optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(attachProofToCapsule(input))
+  );
+
+  server.registerTool(
+    "evaluate_gate",
+    {
+      title: "Evaluate Gate",
+      description: "Agent-friendly gate evaluator: policy, evidence, workflow replay, and transition dry-run without writes.",
+      inputSchema: {
+        capsule: z.record(z.string(), z.unknown()).optional(),
+        scenario: scenarioSchema.optional(),
+        workflow_definition: z.record(z.string(), z.unknown()).optional(),
+        policy: z.record(z.string(), z.unknown()).optional(),
+        action: z.string().optional(),
+        transition_action: z.string().optional(),
+        dry_run: z.boolean().optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(evaluateGate(input))
+  );
+
+  server.registerTool(
+    "simulate_workflow",
+    {
+      title: "Simulate Workflow",
+      description: "Simulate a capsule through its workflow states and show which transitions are verified, ready, or missing evidence.",
+      inputSchema: {
+        capsule: z.record(z.string(), z.unknown()).optional(),
+        scenario: scenarioSchema.optional(),
+        workflow_definition: z.record(z.string(), z.unknown()).optional(),
+        action: z.string().optional(),
+        transition_action: z.string().optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(simulateWorkflow(input))
+  );
+
+  server.registerTool(
+    "verify_capsule",
+    {
+      title: "Verify Capsule",
+      description: "Agent-friendly alias for verify_proof_capsule.",
+      inputSchema: {
+        capsule: z.record(z.string(), z.unknown()).optional(),
+        scenario: scenarioSchema.optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(verifyProofCapsule(input))
   );
 
   server.registerTool(
@@ -647,6 +834,50 @@ export function createMcpServer() {
   );
 
   server.registerTool(
+    "publish_public_proof",
+    {
+      title: "Publish Public Proof",
+      description: "Agent-friendly public proof publisher: returns a tamper-evident public verifier URL and proof-room model without executing writes.",
+      inputSchema: {
+        scenario: scenarioSchema.optional(),
+        capsule: z.record(z.string(), z.unknown()).optional(),
+        workflow_definition: z.record(z.string(), z.unknown()).optional(),
+        endpoint: z.string().optional(),
+        base_url: z.string().optional(),
+        proof_id: z.string().optional(),
+        public_proof_id: z.string().optional(),
+        capsule_id: z.string().optional(),
+        id: z.string().optional(),
+        content_hash: z.string().optional(),
+        hash: z.string().optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(publishPublicProof(input))
+  );
+
+  server.registerTool(
+    "get_proof_room",
+    {
+      title: "Get Proof Room",
+      description: "Return the shareable evidence room: source cards, DUAL links, proof limitations, downloads, agent mode, and operator boundary.",
+      inputSchema: {
+        scenario: scenarioSchema.optional(),
+        capsule: z.record(z.string(), z.unknown()).optional(),
+        workflow_definition: z.record(z.string(), z.unknown()).optional(),
+        endpoint: z.string().optional(),
+        base_url: z.string().optional(),
+        proof_id: z.string().optional(),
+        content_hash: z.string().optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(buildProofRoom(input))
+  );
+
+  server.registerTool(
     "list_workflow_templates",
     {
       title: "List Workflow Templates",
@@ -656,6 +887,18 @@ export function createMcpServer() {
       _meta: TOOL_META
     },
     async () => jsonText(listWorkflowTemplates())
+  );
+
+  server.registerTool(
+    "list_scenario_marketplace",
+    {
+      title: "List Scenario Marketplace",
+      description: "List proof-capsule scenario templates for trade, ownership, agent mandates, insurance, carbon, invoice/payment release, and universal multi-proof workflows.",
+      inputSchema: {},
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async () => jsonText(listScenarioMarketplace())
   );
 
   server.registerTool(
@@ -999,6 +1242,23 @@ export function createMcpServer() {
       "Call run_proof_capsule first, inspect proof_score, source checks, replay steps, and DUAL anchor links.",
       "Share the public verifier URL only if publicWrites=false and no raw evidence payloads or operator tokens are included.",
       "If the proof is not ready, return the recovery actions instead of claiming the page is verifier-ready."
+    ].join("\n"))
+  );
+
+  server.registerPrompt(
+    "supercharge_proof_capsule",
+    {
+      title: "Supercharge Proof Capsule",
+      description: "Guide an agent through creating a multi-proof capsule, publishing a proof room, and preserving the DUAL write boundary.",
+      argsSchema: {
+        workflow: z.string().optional()
+      }
+    },
+    ({ workflow }) => textPrompt([
+      `Supercharge this workflow as a DUAL Proof Capsule: ${workflow || "the supplied process"}.`,
+      "Use create_capsule or build_workflow_draft, attach_proof for each source ref, evaluate_gate, simulate_workflow, verify_capsule, get_proof_room, and publish_public_proof.",
+      "Return what the capsule proves, what it does not prove, DUAL object/template/state links, source proof cards, agent-mode MCP calls, and operator-gated next steps.",
+      "Do not call sync_proof_capsule_live or mint_proof_capsule_live unless an authorised operator explicitly supplies the token."
     ].join("\n"))
   );
 

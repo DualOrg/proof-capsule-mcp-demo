@@ -4,7 +4,7 @@ Proof Capsule is the use-case-agnostic DUAL primitive behind TradeFlow-style pro
 
 This sandbox exposes that primitive through a Streamable HTTP MCP endpoint and a small UI. In production it can read from a live DUAL object and execute operator-gated event-bus mint/sync writes.
 
-The v0.5.3 model adds a TradeFlow-benchmark control-desk UI on top of the public proof layer: DUAL-branded operational header, explicit demo disclosure, 60-90 second reviewer path, first-screen proof actions, reviewer support rail, guided reviewer mode, public DUAL/block-explorer links, link-integrity checks, proof-readiness scoring, and MCP tools/resources/prompts for publishing a verifier-ready proof page. Live writes remain operator-gated.
+The v0.6 model supercharges that surface into a proof operating layer: a universal multi-proof capsule, shareable proof room, scenario marketplace, agent-mode MCP aliases, workflow simulation, proof attachment, and the same operator-gated DUAL write boundary. Live writes remain operator-gated.
 
 ## Scope
 
@@ -53,7 +53,7 @@ Open the public verifier
 The public verifier route is also directly addressable:
 
 ```text
-http://127.0.0.1:4184/proof/PC-LUXURY-RESALE-001?scenario=luxury_resale&content_hash=...
+http://127.0.0.1:4184/proof/PC-UNIVERSAL-MULTI-PROOF-001?scenario=universal_proof_capsule&content_hash=...
 ```
 
 ## Live DUAL Setup
@@ -99,6 +99,12 @@ Tools:
 - `get_capsule_status`
 - `get_live_dual_status`
 - `get_current_live_capsule`
+- `create_capsule`
+- `attach_proof`
+- `evaluate_gate`
+- `simulate_workflow`
+- `verify_capsule`
+- `publish_public_proof`
 - `compose_proof_capsule`
 - `verify_proof_capsule`
 - `evaluate_capsule_policy`
@@ -106,7 +112,9 @@ Tools:
 - `get_capsule_handoff`
 - `run_proof_capsule`
 - `get_public_verifier_page`
+- `get_proof_room`
 - `list_workflow_templates`
+- `list_scenario_marketplace`
 - `get_workflow_definition`
 - `replay_workflow_capsule`
 - `list_source_verifiers`
@@ -131,8 +139,11 @@ Resources:
 - `capsule://dual/status`
 - `capsule://dual/current`
 - `capsule://workflows`
+- `capsule://scenario-marketplace`
 - `capsule://source-verifiers`
 - `capsule://verifier-marketplace`
+- `capsule://proof-room`
+- `capsule://agent-mode`
 - `capsule://operator-runbook`
 - `capsule://proof-runbook`
 
@@ -141,7 +152,8 @@ Resource template:
 - `capsule://demo/{scenario}`
 - `capsule://workflow/{scenario}`
 - `capsule://public-proof/{scenario}`
-- Covered scenarios: `tradeflow_medical_devices`, `insurance_claim`, `agent_mandate_purchase`, `luxury_resale`, `carbon_credit`
+- `capsule://proof-room/{scenario}`
+- Covered scenarios: `universal_proof_capsule`, `tradeflow_medical_devices`, `insurance_claim`, `agent_mandate_purchase`, `luxury_resale`, `carbon_credit`
 
 Prompts:
 
@@ -152,6 +164,35 @@ Prompts:
 - `operate_capsule_transition`
 - `compare_capsule_versions`
 - `publish_proof_capsule_verifier_page`
+- `supercharge_proof_capsule`
+
+## v0.6 Supercharged Layer
+
+The flagship scenario is `universal_proof_capsule`. It encapsulates:
+
+- Solana point-in-time ownership proof;
+- DUAL object/template/state/integrity proof;
+- IPFS document hash proof;
+- signed verifier attestation;
+- non-executing payment preview;
+- vault-held mandate boundary.
+
+The proof room is the shareable evidence surface. It returns source proof cards, DUAL/block-explorer links, what the capsule proves, what it does not prove, downloadable bundle metadata, agent-mode calls, operator-console next actions, and the public-write boundary. It is available from:
+
+- UI: run proof on the universal scenario;
+- API: `GET /api/proof/room?scenario=universal_proof_capsule`;
+- MCP: `get_proof_room`;
+- resource: `capsule://proof-room/{scenario}`.
+
+The scenario marketplace is the reusable template layer. It exposes templates for universal multi-proof, conditional trade, tokenised ownership, agent mandate, insurance claim, carbon credit, and invoice/payment release workflows. It is available from `GET /api/scenarios/marketplace`, MCP `list_scenario_marketplace`, and `capsule://scenario-marketplace`.
+
+Agent mode uses short, generic verbs:
+
+```text
+create_capsule -> attach_proof -> evaluate_gate -> simulate_workflow -> verify_capsule -> publish_public_proof
+```
+
+`compare_capsules` and `red_team_capsule` remain the audit and adversarial checks. `sync_proof_capsule_live` and `mint_proof_capsule_live` are the only write tools and still require an authorised operator token.
 
 ## Workflow Model
 

@@ -190,6 +190,44 @@ body {
   max-width: 900px;
 }
 
+.supercharge-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 14px;
+}
+
+.supercharge-grid article {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  min-height: 138px;
+  padding: 14px;
+}
+
+.supercharge-grid span {
+  color: var(--teal-dark);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.supercharge-grid strong {
+  display: block;
+  font-size: 15px;
+  line-height: 1.25;
+  margin: 7px 0;
+}
+
+.supercharge-grid p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
 .lede {
   color: var(--muted);
   max-width: 820px;
@@ -297,8 +335,13 @@ body {
   margin-bottom: 16px;
 }
 
-.proof-run[hidden] {
+.proof-run[hidden],
+.proof-room[hidden] {
   display: none;
+}
+
+.proof-room {
+  margin-bottom: 16px;
 }
 
 .public-verifier-banner {
@@ -369,18 +412,31 @@ body {
 }
 
 .proof-metrics,
+.proof-room-summary,
 .proof-run-grid {
   display: grid;
   gap: 12px;
 }
 
-.proof-metrics {
+.proof-metrics,
+.proof-room-summary {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-bottom: 14px;
 }
 
 .proof-run-grid {
   grid-template-columns: 1.1fr 1fr 1.1fr;
+}
+
+.proof-room-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 1.25fr 1fr 1fr;
+}
+
+.proof-room-grid h3 {
+  font-size: 13px;
+  margin: 0 0 10px;
 }
 
 .proof-metric {
@@ -929,6 +985,7 @@ h3 {
 body.public-mode .top-actions,
 body.public-mode .intro,
 body.public-mode .walkthrough-band,
+body.public-mode .supercharge-grid,
 body.public-mode .controls,
 body.public-mode .operations-grid,
 body.public-mode .proof .button-row,
@@ -1121,7 +1178,10 @@ pre {
   .workflow-grid,
   .operations-grid,
   .proof-metrics,
+  .proof-room-summary,
   .proof-run-grid,
+  .proof-room-grid,
+  .supercharge-grid,
   body.public-mode .proof-run-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1194,7 +1254,10 @@ pre {
   .workflow-grid,
   .operations-grid,
   .proof-metrics,
+  .proof-room-summary,
   .proof-run-grid,
+  .proof-room-grid,
+  .supercharge-grid,
   body.public-mode .proof-run-grid,
   .form-grid,
   .button-row,

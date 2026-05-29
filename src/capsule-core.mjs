@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
 export const SERVICE_NAME = "dual-proof-capsule-mcp";
-export const SERVICE_VERSION = "0.5.3";
-export const CAPSULE_SCHEMA_VERSION = "proof-capsule.v0.1";
-export const CUSTOM_WORKFLOW_SCHEMA_VERSION = "proof-capsule-workflow-draft.v0.1";
+export const SERVICE_VERSION = "0.6.0";
+export const CAPSULE_SCHEMA_VERSION = "proof-capsule.v0.2";
+export const CUSTOM_WORKFLOW_SCHEMA_VERSION = "proof-capsule-workflow-draft.v0.2";
 export const GENERATED_AT = "2026-05-29T00:00:00.000Z";
 export const WRITE_BOUNDARY = "Public read/generate/verify. Live DUAL writes are available only through server-side operator-gated endpoints; no public writes, wallet actions, raw evidence storage, or settlement execution.";
 
@@ -15,15 +15,90 @@ export const CAPSULE_TYPES = [
   "agent_mandate",
   "supply_chain",
   "carbon",
-  "real_estate"
+  "real_estate",
+  "multi_proof"
 ];
 
 export const SCENARIOS = [
+  "universal_proof_capsule",
   "tradeflow_medical_devices",
   "insurance_claim",
   "agent_mandate_purchase",
   "luxury_resale",
   "carbon_credit"
+];
+
+export const SCENARIO_MARKETPLACE = [
+  {
+    template_id: "template.proof_capsule.universal_multi_proof.v1",
+    scenario: "universal_proof_capsule",
+    label: "Universal multi-proof capsule",
+    status: "flagship",
+    capsule_type: "multi_proof",
+    use_case: "Encapsulate Solana ownership, DUAL state, IPFS documents, signed attestations, payment previews, and mandates into one verifier.",
+    sources: ["solana", "dual", "ipfs", "verifier_attestation", "payment_preview", "enterprise_vault"],
+    reviewer_path: "Run proof -> inspect proof room -> open public verifier -> verify tamper link -> hand off MCP pack"
+  },
+  {
+    template_id: "template.proof_capsule.tradeflow.v1",
+    scenario: "tradeflow_medical_devices",
+    label: "Conditional Trade Instrument",
+    status: "production_demo",
+    capsule_type: "trade",
+    use_case: "Gate shipment milestones and payment release with token, document, telemetry, customs, insurance, escrow, and DUAL mandate proof.",
+    sources: ["solana", "ipfs", "signed_iot_feed", "customs_attestation", "insurance_attestation", "escrow_mirror", "dual"],
+    reviewer_path: "Verify gate -> check DUAL object links -> inspect payment release boundary"
+  },
+  {
+    template_id: "template.proof_capsule.tokenised_ownership.v1",
+    scenario: "luxury_resale",
+    label: "Tokenised Ownership Capsule",
+    status: "ready",
+    capsule_type: "asset_ownership",
+    use_case: "Bind point-in-time token ownership to authenticity, condition, custody, escrow, and buyer mandate evidence.",
+    sources: ["solana", "brand_attestation", "appraisal_attestation", "custody_vault", "escrow_mirror", "dual"],
+    reviewer_path: "Check token holder -> inspect custody/appraisal -> confirm escrow preview"
+  },
+  {
+    template_id: "template.proof_capsule.agent_mandate.v1",
+    scenario: "agent_mandate_purchase",
+    label: "Agent Mandate Capsule",
+    status: "ready",
+    capsule_type: "agent_mandate",
+    use_case: "Prove that an AI agent action stayed inside identity, budget, counterparty, approval, and non-executing payment boundaries.",
+    sources: ["dual", "mandate_policy", "counterparty_registry", "payment_preview"],
+    reviewer_path: "Evaluate mandate -> confirm blocked writes -> publish proof page"
+  },
+  {
+    template_id: "template.proof_capsule.insurance_claim.v1",
+    scenario: "insurance_claim",
+    label: "Insurance Claim Capsule",
+    status: "ready",
+    capsule_type: "insurance",
+    use_case: "Package coverage, approval, tool-use, report, and mandate evidence for underwriter or claims review.",
+    sources: ["policy_admin", "enterprise_vault", "signed_tool_log", "dual"],
+    reviewer_path: "Verify coverage window -> check approvals/logs -> export insurer proof room"
+  },
+  {
+    template_id: "template.proof_capsule.carbon_retirement.v1",
+    scenario: "carbon_credit",
+    label: "Carbon Credit Capsule",
+    status: "ready",
+    capsule_type: "carbon",
+    use_case: "Bind registry issuance, MRV packets, verifier signatures, token holder proof, retirement preview, and buyer mandate.",
+    sources: ["carbon_registry", "mrv_oracle", "verifier_attestation", "solana", "retirement_registry", "dual"],
+    reviewer_path: "Check issuance/MRV -> confirm holder -> separate retirement preview from final retirement"
+  },
+  {
+    template_id: "template.proof_capsule.invoice_payment.v1",
+    scenario: "custom_workflow",
+    label: "Invoice / Payment Release Capsule",
+    status: "workflow_blueprint",
+    capsule_type: "trade",
+    use_case: "Model invoice approval, delivery evidence, sanctions checks, and payment-rail release as an operator-gated DUAL workflow.",
+    sources: ["enterprise_vault", "counterparty_registry", "payment_preview", "dual"],
+    reviewer_path: "Build workflow -> attach proof refs -> dry-run transition -> operator sync"
+  }
 ];
 
 export const SOURCE_VERIFIER_REGISTRY = {
@@ -210,6 +285,20 @@ export const SOURCE_VERIFIER_REGISTRY = {
 };
 
 const WORKFLOW_DEFINITIONS = {
+  universal_proof_capsule: {
+    workflow_id: "workflow.proof_capsule.universal_multi_proof.v1",
+    title: "Universal multi-proof capsule lifecycle",
+    subject_type: "multi_source_proof_object",
+    dual_template: "io.dual.proof_capsule.lifecycle.v1",
+    states: ["Drafted", "Source proofs attached", "Capsule verified", "Ready for reliance", "Archived"],
+    current_transition: "verify_multi_proof",
+    transitions: [
+      { action: "attach_source_proofs", from_state: "Drafted", to_state: "Source proofs attached", required_evidence: ["ownership", "document", "attestation"], policy_gate: "minimum external proof references are attached" },
+      { action: "verify_multi_proof", from_state: "Source proofs attached", to_state: "Capsule verified", required_evidence: ["ownership", "document", "attestation", "dual_state", "settlement", "mandate"], policy_gate: "source refs, DUAL anchor, and mandate are verifier-ready" },
+      { action: "publish_proof_room", from_state: "Capsule verified", to_state: "Ready for reliance", required_evidence: ["ownership", "document", "attestation", "dual_state", "settlement", "mandate"], policy_gate: "public proof room can be shared without write authority" },
+      { action: "archive_capsule", from_state: "Ready for reliance", to_state: "Archived", required_evidence: ["dual_state", "attestation"], policy_gate: "final proof envelope is retained and no public write path is exposed" }
+    ]
+  },
   tradeflow_medical_devices: {
     workflow_id: "workflow.tradeflow.conditional_instrument.v1",
     title: "Conditional trade instrument lifecycle",
@@ -287,6 +376,19 @@ const TRADEFLOW_DUAL_REFERENCE = {
   template_explorer_url: "https://explorer-testnet.dual.network/templates/6a167b2b5fed83e4855a86db",
   l2_state_search_url: "https://explorer-test-v2.dual.network/search?q=0x189f83373f5b1c2bf7b2d7e0cc8a736f279f93a09f2fc1fcfd4af289fca4f5ac",
   caveat: "This demo references an existing DUAL proof anchor; it does not perform a live write."
+};
+
+const PROOF_CAPSULE_DUAL_REFERENCE = {
+  mode: "readback_reference",
+  source: "Proof Capsule live DUAL testnet object, read-only reference",
+  object_id: "6a18ce840e26f9f80320ee5f",
+  template_id: "6a18ce820e26f9f80320ee5d",
+  state_hash: "0xeaa90fced51cbe7de377a6413c3550f4176bfc7080ed6c7dc01572f7ca49912e",
+  integrity_hash: "0x9afe371569643a2e1c12a43a38eec9d7615ee6616b6d9776779e054ef8558c9a",
+  object_explorer_url: "https://explorer-testnet.dual.network/objects/6a18ce840e26f9f80320ee5f",
+  template_explorer_url: "https://explorer-testnet.dual.network/templates/6a18ce820e26f9f80320ee5d",
+  l2_state_search_url: "https://explorer-test-v2.dual.network/search?q=0xeaa90fced51cbe7de377a6413c3550f4176bfc7080ed6c7dc01572f7ca49912e",
+  caveat: "Read-only live DUAL reference for the canonical Proof Capsule object; this response does not perform a live write."
 };
 
 function demoDualReference(slug, label) {
@@ -520,6 +622,183 @@ export function demoCapsuleInput(scenario = "tradeflow_medical_devices") {
       occurred_at: GENERATED_AT
     }
   };
+
+  if (normalized === "universal_proof_capsule") {
+    return {
+      ...base,
+      capsule_id: "PC-UNIVERSAL-MULTI-PROOF-001",
+      capsule_type: "multi_proof",
+      subject: {
+        subject_id: "PROOF-ASSET-ROOM-001",
+        label: "Universal proof capsule with token, document, attestation, payment, and DUAL state",
+        asset_class: "multi_source_proof_room",
+        value_usd: 118000,
+        state: "Capsule verified",
+        current_gate: "Ready for reliance"
+      },
+      claims: [
+        {
+          claim_id: "solana_ownership_point_in_time",
+          type: "ownership",
+          statement: "A tokenised ownership proof existed on Solana at the declared slot.",
+          expected_source: "solana",
+          required: true
+        },
+        {
+          claim_id: "ipfs_document_hash_bound",
+          type: "document",
+          statement: "The source document bytes are bound by an IPFS CID and declared hash.",
+          expected_source: "ipfs",
+          required: true
+        },
+        {
+          claim_id: "signed_attestation_present",
+          type: "attestation",
+          statement: "A verifier signed the point-in-time facts bound into the capsule.",
+          expected_source: "verifier_attestation",
+          required: true
+        },
+        {
+          claim_id: "dual_state_readback_present",
+          type: "dual_state",
+          statement: "The DUAL object/template/state/integrity hashes are visible as the governed proof envelope.",
+          expected_source: "dual",
+          required: true
+        },
+        {
+          claim_id: "settlement_preview_non_executing",
+          type: "settlement",
+          statement: "Payment readiness is a non-executing preview; no money movement is claimed.",
+          expected_source: "payment_preview",
+          required: true
+        },
+        {
+          claim_id: "mandate_authority_bound",
+          type: "mandate",
+          statement: "The relying agent or operator has a mandate boundary attached to the capsule.",
+          expected_source: "enterprise_vault",
+          required: true
+        }
+      ],
+      evidence_refs: [
+        {
+          evidence_id: "SOL-OWNERSHIP-PIT-001",
+          type: "ownership",
+          source: "solana",
+          hash: "sha256:a88328b98541f4f0ac0bf5eaa0fe86e763d64e63f7b7c67d82f83ce2f24f7d28",
+          summary: "Point-in-time Solana token ownership proof for the tokenised asset.",
+          ref: "solana:devnet:mint:ProofCapsuleUniversalAsset001",
+          explorer_url: "https://explorer.solana.com/address/ProofCapsuleUniversalAsset001?cluster=devnet",
+          point_in_time: "slot:343220991"
+        },
+        {
+          evidence_id: "IPFS-SOURCE-DOC-001",
+          type: "document",
+          source: "ipfs",
+          hash: "sha256:f9944b21299c7316776d0d9552c9c32180a7c83db16be33d5f092ca9e672de14",
+          summary: "Source document pack for the off-chain contract, inspection, or asset facts.",
+          ref: "ipfs://bafybeiproofcapsuleuniversal001",
+          explorer_url: "https://ipfs.io/ipfs/bafybeiproofcapsuleuniversal001"
+        },
+        {
+          evidence_id: "ATTEST-VERIFIER-001",
+          type: "attestation",
+          source: "verifier_attestation",
+          hash: "sha256:7c756c0f2d61d996745c9f5f4371acdc74f659a8b07ac2b253529a4d1343a3fa",
+          summary: "Verifier signature over ownership, document, mandate, and payment preview facts.",
+          ref: "attestation://verifier/proof-room/001"
+        },
+        {
+          evidence_id: "DUAL-STATE-PC-001",
+          type: "dual_state",
+          source: "dual",
+          hash: "sha256:148fe9edb64d36df1c3b4ebce5e4fc9214b9314f57fc54cd2934d7e39cb25b4d",
+          summary: "Live DUAL proof capsule object, state hash, integrity hash, and template reference.",
+          ref: `dual://objects/${PROOF_CAPSULE_DUAL_REFERENCE.object_id}`,
+          explorer_url: PROOF_CAPSULE_DUAL_REFERENCE.object_explorer_url
+        },
+        {
+          evidence_id: "PAYMENT-PREVIEW-PC-001",
+          type: "settlement",
+          source: "payment_preview",
+          hash: "sha256:a590a146b6f652bdf45a3a7d6cfe2b7ef18a7f1587a5d2628e40706f7be4e916",
+          summary: "Non-executing payment preview proving readiness, not settlement.",
+          ref: "payment-preview://proof-room/001"
+        },
+        {
+          evidence_id: "MANDATE-VAULT-PC-001",
+          type: "mandate",
+          source: "enterprise_vault",
+          hash: "sha256:60ff4e942d72df66185062005046b3a0f9cbfb3f94f093f6903b9fd87d36a2b3",
+          summary: "Vault-held mandate boundary for who may rely on, update, or sync the capsule.",
+          ref: "vault://mandates/proof-room/001"
+        }
+      ],
+      external_anchors: [
+        {
+          anchor_id: "solana-tokenised-ownership",
+          kind: "ownership",
+          chain: "solana",
+          source_of_truth: "Solana token account state",
+          mint: "ProofCapsuleUniversalAsset001",
+          owner_wallet: "UniversalOwnerDemoWallet111111111111111",
+          token_account: "UniversalAssetAssociatedTokenDemo111",
+          amount: "1",
+          tx_signature: "2UxDemoUniversalProofCapsuleSignature111111111111111111111111",
+          slot: 343220991,
+          explorer_url: "https://explorer.solana.com/tx/2UxDemoUniversalProofCapsuleSignature111111111111111111111111?cluster=devnet",
+          caveat: "Point-in-time ownership proof; recheck before settlement or transfer unless the token is locked."
+        },
+        {
+          anchor_id: "ipfs-document-pack",
+          kind: "document",
+          source_of_truth: "IPFS content-addressed source document",
+          ref: "ipfs://bafybeiproofcapsuleuniversal001",
+          explorer_url: "https://ipfs.io/ipfs/bafybeiproofcapsuleuniversal001",
+          caveat: "Proves content hash, not legal sufficiency or current business approval."
+        },
+        {
+          anchor_id: "dual-proof-capsule-state",
+          kind: "proof_state",
+          chain: "dual",
+          ...PROOF_CAPSULE_DUAL_REFERENCE
+        },
+        {
+          anchor_id: "signed-verifier-attestation",
+          kind: "attestation",
+          source_of_truth: "Verifier signature over source-fact bundle",
+          ref: "attestation://verifier/proof-room/001",
+          caveat: "Verifier accreditation must be checked separately for regulated reliance."
+        }
+      ],
+      dual_anchor: PROOF_CAPSULE_DUAL_REFERENCE,
+      policy: {
+        ...defaultPolicy(),
+        policy_id: "universal-proof-capsule-policy-v0.2",
+        required_anchor_types: ["ownership", "document", "attestation", "dual_state", "settlement", "mandate"],
+        allowed_external_chains: ["solana", "ipfs", "verifier_attestation", "dual", "payment_preview", "enterprise_vault"],
+        max_value_usd: 150000,
+        human_review_threshold_usd: 100000
+      },
+      decision: {
+        result: "Approved with review",
+        code: "multi_proof_ready_for_reliance",
+        reason: "All required proof sources are present; value triggers human review before action-critical reliance.",
+        review_required: true,
+        release_usd: 0,
+        remaining_usd: 118000
+      },
+      state_transition: {
+        action: "verify_multi_proof",
+        actor: "verifier-agent.proof-room",
+        from_state: "Source proofs attached",
+        to_state: "Capsule verified",
+        from_gate: "Source proof intake",
+        to_gate: "Ready for reliance",
+        occurred_at: GENERATED_AT
+      }
+    };
+  }
 
   if (normalized === "insurance_claim") {
     return {
@@ -1300,7 +1579,7 @@ export function verifyProofCapsule(input = {}) {
       && capsule.write_boundary?.write_execution === "operator_gated"
     );
   const integrityChecks = [
-    check("schema_present", capsule.schema_version === CAPSULE_SCHEMA_VERSION),
+    check("schema_present", typeof capsule.schema_version === "string" && capsule.schema_version.startsWith("proof-capsule.")),
     check("public_writes_disabled", publicWritesDisabled),
     check("write_boundary_declared", publicWritesDisabled && liveWriteBoundaryOk),
     check("hashes_present", Object.keys(derived).every((key) => Boolean(declared[key]))),
@@ -1599,6 +1878,28 @@ export function listVerifierMarketplace(input = {}) {
     modules: verifiers,
     suggested_minimum_modules: ["dual", "mandate_policy", "enterprise_vault", "payment_preview"],
     write_boundary: WRITE_BOUNDARY
+  };
+}
+
+export function listScenarioMarketplace() {
+  const scenarioSet = new Set(SCENARIOS);
+  return {
+    ok: true,
+    marketplace_id: "proof-capsule.scenario-marketplace.v0.6",
+    template_count: SCENARIO_MARKETPLACE.length,
+    launchable_count: SCENARIO_MARKETPLACE.filter((template) => scenarioSet.has(template.scenario)).length,
+    templates: SCENARIO_MARKETPLACE.map((template) => ({
+      ...template,
+      launchable: scenarioSet.has(template.scenario),
+      workflow_id: scenarioSet.has(template.scenario)
+        ? getWorkflowDefinition({ scenario: template.scenario }).workflow_id
+        : null,
+      public_verifier_model: scenarioSet.has(template.scenario)
+        ? `/api/proof/public?scenario=${template.scenario}`
+        : "/api/workflow/build"
+    })),
+    write_boundary: WRITE_BOUNDARY,
+    note: "Marketplace templates are proof/workflow templates. Live DUAL writes still require an authorised operator token."
   };
 }
 
@@ -2217,6 +2518,22 @@ export function buildPublicVerifierPage(input = {}) {
     { label: "DUAL template", url: capsule.dual_anchor?.template_explorer_url || null },
     { label: "DUAL L2 state", url: capsule.dual_anchor?.l2_state_search_url || null }
   ].filter((link) => Boolean(link.url));
+  const proofRoom = buildProofRoomModel({
+    capsule,
+    scenario,
+    verification,
+    policy,
+    evidence,
+    replay,
+    timeline,
+    diagnosis,
+    transition_plan,
+    proof_score,
+    sourceLinks,
+    dualLinks,
+    publicUrl,
+    endpoint: input.endpoint || "/mcp"
+  });
 
   return {
     ok: linkIntegrity.ok,
@@ -2227,6 +2544,7 @@ export function buildPublicVerifierPage(input = {}) {
     scenario,
     capsule_id: capsule.capsule_id,
     capsule,
+    proof_room: proofRoom,
     link_integrity: linkIntegrity,
     summary: {
       title: capsule.subject?.label || capsule.capsule_id,
@@ -2302,7 +2620,8 @@ export function buildPublicVerifierPage(input = {}) {
         next_safe_action: diagnosis.next_safe_action,
         actions: diagnosis.recovery_actions
       },
-      source_links: sourceLinks
+      source_links: sourceLinks,
+      proof_room: proofRoom
     },
     links: {
       public_url: publicUrl,
@@ -2312,6 +2631,159 @@ export function buildPublicVerifierPage(input = {}) {
     },
     write_boundary: capsule.write_boundary,
     verifier_statement: "This public verifier page lets humans and agents re-check the capsule proof envelope without executing DUAL writes."
+  };
+}
+
+export function buildProofRoom(input = {}) {
+  const page = buildPublicVerifierPage(input);
+  return {
+    ok: page.ok,
+    page_type: "proof_room",
+    public_proof_id: page.public_proof_id,
+    public_url: page.public_url,
+    scenario: page.scenario,
+    capsule_id: page.capsule_id,
+    capsule: page.capsule,
+    link_integrity: page.link_integrity,
+    proof_score: page.proof_score,
+    proof_room: page.proof_room,
+    write_boundary: page.write_boundary
+  };
+}
+
+export function createCapsule(input = {}) {
+  const capsule = composeProofCapsule(input);
+  const verification = verifyProofCapsule({ capsule });
+  const proof_room = buildProofRoom({
+    scenario: resolveWorkflowScenario(input, capsule),
+    capsule,
+    base_url: input.base_url,
+    endpoint: input.endpoint
+  });
+  return {
+    ok: verification.accepted,
+    action: "create_capsule",
+    capsule,
+    verification,
+    proof_room: proof_room.proof_room,
+    write_boundary: capsule.write_boundary
+  };
+}
+
+export function attachProofToCapsule(input = {}) {
+  const baseCapsule = input.capsule?.schema_version ? input.capsule : composeProofCapsule(input);
+  const evidenceRef = normalizeEvidenceRef(input.proof_ref || input.evidence_ref || {
+    evidence_id: input.evidence_id || `ATTACHED-PROOF-${shortHash(hashValue(input))}`,
+    type: input.type || "attestation",
+    source: input.source || "enterprise_vault",
+    summary: input.summary || "Attached proof reference.",
+    ref: input.ref || input.uri || undefined,
+    hash: input.hash || undefined,
+    explorer_url: input.explorer_url || undefined
+  });
+  const capsule = composeProofCapsule({
+    ...baseCapsule,
+    evidence_refs: [...(baseCapsule.evidence_refs || []), evidenceRef],
+    generated_at: input.generated_at
+  });
+  const evidence = verifyEvidenceRefs({
+    scenario: resolveWorkflowScenario(input, capsule),
+    capsule,
+    workflow_definition: input.workflow_definition
+  });
+  const verification = verifyProofCapsule({ capsule });
+  return {
+    ok: verification.accepted && evidence.ok,
+    action: "attach_proof",
+    attached: evidenceRef,
+    capsule,
+    evidence,
+    verification,
+    write_boundary: capsule.write_boundary
+  };
+}
+
+export function evaluateGate(input = {}) {
+  const capsule = input.capsule?.schema_version ? input.capsule : composeProofCapsule(input);
+  const scenario = resolveWorkflowScenario(input, capsule);
+  const workflow = resolveWorkflowDefinition(input, capsule, scenario);
+  const policy = evaluateCapsulePolicy({ capsule, policy: input.policy });
+  const evidence = verifyEvidenceRefs({ scenario, capsule, workflow_definition: workflow });
+  const replay = replayWorkflowCapsule({ scenario, capsule, workflow_definition: workflow });
+  const transition = planTransitionQueue({
+    scenario,
+    capsule,
+    workflow_definition: workflow,
+    action: input.action || input.transition_action,
+    dry_run: input.dry_run !== false
+  });
+  return {
+    ok: policy.result !== "Blocked" && evidence.ok && replay.ok,
+    action: "evaluate_gate",
+    scenario,
+    gate: input.action || input.transition_action || capsule.state_transition?.action || workflow.current_transition,
+    result: policy.result,
+    code: policy.code,
+    policy,
+    evidence,
+    replay,
+    transition,
+    write_boundary: capsule.write_boundary
+  };
+}
+
+export function simulateWorkflow(input = {}) {
+  const capsule = input.capsule?.schema_version ? input.capsule : composeProofCapsule(input);
+  const scenario = resolveWorkflowScenario(input, capsule);
+  const workflow = resolveWorkflowDefinition(input, capsule, scenario);
+  const replay = replayWorkflowCapsule({ scenario, capsule, workflow_definition: workflow });
+  const evaluation = evaluateGate({ scenario, capsule, workflow_definition: workflow, action: input.action || input.transition_action });
+  const simulation_steps = (workflow.transitions || []).map((transition, index) => {
+    const isCurrent = transition.action === capsule.state_transition?.action
+      || transition.to_state === capsule.state_transition?.to_state;
+    const missing = (transition.required_evidence || [])
+      .filter((type) => !(capsule.evidence_refs || []).some((ref) => ref.type === type));
+    return {
+      step: index + 1,
+      action: transition.action,
+      from_state: transition.from_state,
+      to_state: transition.to_state,
+      status: missing.length
+        ? "needs_evidence"
+        : isCurrent
+          ? "current_verified"
+          : "ready_when_reached",
+      missing_evidence: missing,
+      operator_sync_required: true
+    };
+  });
+  return {
+    ok: replay.ok && evaluation.ok,
+    action: "simulate_workflow",
+    scenario,
+    workflow,
+    capsule_id: capsule.capsule_id,
+    current_state: capsule.state_transition?.to_state || capsule.subject?.state,
+    simulation_steps,
+    replay,
+    evaluation,
+    write_boundary: capsule.write_boundary
+  };
+}
+
+export function publishPublicProof(input = {}) {
+  const page = buildPublicVerifierPage(input);
+  return {
+    ok: page.ok,
+    action: "publish_public_proof",
+    public_url: page.public_url,
+    public_proof_id: page.public_proof_id,
+    capsule_id: page.capsule_id,
+    link_integrity: page.link_integrity,
+    proof_score: page.proof_score,
+    proof_room: page.proof_room,
+    public_writes: false,
+    write_boundary: page.write_boundary
   };
 }
 
@@ -2331,6 +2803,12 @@ export function serviceDescriptor() {
     operatorTokenAccepted: false,
     tools: [
       "get_capsule_status",
+      "create_capsule",
+      "attach_proof",
+      "evaluate_gate",
+      "simulate_workflow",
+      "verify_capsule",
+      "publish_public_proof",
       "compose_proof_capsule",
       "verify_proof_capsule",
       "evaluate_capsule_policy",
@@ -2339,6 +2817,7 @@ export function serviceDescriptor() {
       "run_proof_capsule",
       "get_public_verifier_page",
       "list_workflow_templates",
+      "list_scenario_marketplace",
       "get_workflow_definition",
       "replay_workflow_capsule",
       "list_source_verifiers",
@@ -2348,6 +2827,7 @@ export function serviceDescriptor() {
       "plan_transition_queue",
       "diagnose_capsule",
       "get_proof_timeline",
+      "get_proof_room",
       "compare_capsules",
       "generate_agent_handoff_pack"
     ],
@@ -2358,12 +2838,15 @@ export function serviceDescriptor() {
       "capsule://demo/tradeflow-medical-devices",
       "capsule://scorecard",
       "capsule://workflows",
+      "capsule://scenario-marketplace",
       "capsule://source-verifiers",
       "capsule://verifier-marketplace",
+      "capsule://proof-room",
+      "capsule://agent-mode",
       "capsule://operator-runbook",
       "capsule://proof-runbook"
     ],
-    resourceTemplates: ["capsule://demo/{scenario}", "capsule://workflow/{scenario}", "capsule://public-proof/{scenario}"],
+    resourceTemplates: ["capsule://demo/{scenario}", "capsule://workflow/{scenario}", "capsule://public-proof/{scenario}", "capsule://proof-room/{scenario}"],
     prompts: [
       "proof_capsule_review",
       "mcp_client_handoff",
@@ -2371,7 +2854,8 @@ export function serviceDescriptor() {
       "design_proof_capsule_workflow",
       "operate_capsule_transition",
       "compare_capsule_versions",
-      "publish_proof_capsule_verifier_page"
+      "publish_proof_capsule_verifier_page",
+      "supercharge_proof_capsule"
     ],
     supported_capsule_types: CAPSULE_TYPES,
     supported_scenarios: SCENARIOS,
@@ -2383,8 +2867,8 @@ export function scorecard() {
   return {
     ok: true,
     score_target: 9.8,
-    score_claim: "v0.5.3_pending_cowork_revalidation",
-    scoring_note: "The v0.5.3 benchmark UI/support layer may only claim 9.8 after local/prod proof scripts pass and Claude Cowork independently agrees.",
+    score_claim: "v0.6_pending_cowork_revalidation",
+    scoring_note: "The v0.6 multi-proof/proof-room/agent-mode layer may only claim 9.8 after local/prod proof scripts pass and Claude Cowork independently agrees.",
     criteria: [
       { area: "MCP ergonomics", required: "Manifest, schema, resources, templates, prompts, read-only annotations, structured outputs." },
       { area: "Proof semantics", required: "Stable content hashes split from fresh envelope hashes; per-hash re-derivation." },
@@ -2392,6 +2876,8 @@ export function scorecard() {
       { area: "Demo clarity", required: "Human UI shows capsule data, hashes, anchors, policy result, and verifier output." },
       { area: "Operator workflow", required: "Workflow builder, evidence intake, transition queue, recovery, timeline, verifier marketplace, compare, and agent handoff work without public writes." },
       { area: "Public proof run", required: "One-click proof run produces a shareable verifier page with claims, evidence, source checks, policy, replay, DUAL anchors, hashes, link-integrity status, and next safe action." },
+      { area: "Proof room", required: "Shareable room shows source proof cards, DUAL links, what-is-proven limits, downloads, and agent-mode calls." },
+      { area: "Agent mode", required: "MCP exposes create/attach/evaluate/simulate/verify/publish/compare/red-team tools while keeping write tools operator-gated." },
       { area: "Red team", required: "Missing evidence, unsupported source, stale ownership, hash tamper, and live-write escalation are blocked." }
     ]
   };
@@ -2411,9 +2897,12 @@ export function handoff(endpoint = "http://127.0.0.1:4184/mcp") {
       "resources/read capsule://manifest",
       "tools/call get_capsule_status",
       "tools/call compose_proof_capsule",
+      "tools/call create_capsule",
       "tools/call run_proof_capsule",
+      "tools/call get_proof_room",
       "tools/call get_public_verifier_page",
       "tools/call verify_proof_capsule",
+      "tools/call simulate_workflow",
       "tools/call replay_workflow_capsule",
       "tools/call get_proof_timeline",
       "tools/call plan_transition_queue",
@@ -2450,6 +2939,120 @@ function summarizeEvidence(capsule) {
     has_hash: Boolean(ref.hash),
     has_explorer_url: Boolean(ref.explorer_url)
   }));
+}
+
+function buildProofRoomModel({
+  capsule,
+  scenario,
+  verification,
+  policy,
+  evidence,
+  replay,
+  timeline,
+  diagnosis,
+  transition_plan,
+  proof_score,
+  sourceLinks,
+  dualLinks,
+  publicUrl,
+  endpoint
+}) {
+  const evidenceResults = evidence.results || [];
+  const sourceCards = (capsule.evidence_refs || []).map((ref) => {
+    const result = evidenceResults.find((item) => (
+      item.evidence_id === ref.evidence_id
+      || (item.type === ref.type && item.source === ref.source)
+    ));
+    const verifier = SOURCE_VERIFIER_REGISTRY[ref.source] || {};
+    return {
+      evidence_id: ref.evidence_id,
+      type: ref.type,
+      source: ref.source,
+      status: result?.status || "unverified",
+      hash: ref.hash || null,
+      ref: ref.ref || null,
+      explorer_url: ref.explorer_url || null,
+      point_in_time: ref.point_in_time || null,
+      proves: verifier.proves || ref.summary || "",
+      does_not_prove: verifier.does_not_prove || "Native truth outside the referenced source system.",
+      freshness_rule: verifier.freshness_rule || result?.recheck_rule || "Recheck before action-critical reliance.",
+      summary: ref.summary || ""
+    };
+  });
+  const proofRoomHash = hashValue({
+    capsule_id: capsule.capsule_id,
+    content_hash: capsule.hashes?.capsule_content_hash,
+    timeline_hash: timeline.timeline_hash,
+    sources: sourceCards.map((card) => ({
+      evidence_id: card.evidence_id,
+      source: card.source,
+      hash: card.hash,
+      status: card.status
+    }))
+  });
+  return {
+    room_id: `room:${shortHash(proofRoomHash)}`,
+    room_hash: proofRoomHash,
+    title: capsule.subject?.label || capsule.capsule_id,
+    scenario,
+    decision: {
+      result: policy.result,
+      code: policy.code,
+      reason: policy.reason,
+      proof_score: proof_score.score,
+      proof_grade: proof_score.grade
+    },
+    what_this_proves: [
+      "The named source references are present, hashed, and bound into the capsule content hash.",
+      "DUAL anchors the governed proof envelope, state transition, write boundary, and verifier-readable object metadata.",
+      "The workflow replay, policy decision, evidence checks, and public proof link can be independently re-derived by humans or MCP clients."
+    ],
+    what_this_does_not_prove: [
+      "External source facts are point-in-time unless a live adapter rechecks them.",
+      "The capsule does not store raw evidence, execute settlement, transfer tokens, or perform wallet actions.",
+      "Public verifier pages do not grant write authority; live DUAL writes remain server-side and operator-gated."
+    ],
+    source_cards: sourceCards,
+    dual_links: dualLinks,
+    source_links: sourceLinks.filter((link) => Boolean(link.url)),
+    timeline: timeline.events,
+    downloads: [
+      {
+        label: "Proof bundle JSON",
+        filename: `${capsule.capsule_id}-proof-bundle.json`,
+        mime_type: "application/json",
+        content_hash: capsule.hashes?.capsule_content_hash,
+        includes: ["capsule", "hashes", "policy", "source checks", "workflow replay", "timeline", "proof score"]
+      },
+      {
+        label: "Agent handoff pack",
+        filename: `${capsule.capsule_id}-agent-handoff.json`,
+        mime_type: "application/json",
+        content_hash: hashValue({ capsule_id: capsule.capsule_id, endpoint, tools: ["verify_capsule", "evaluate_gate", "simulate_workflow"] }),
+        includes: ["MCP endpoint", "safe read-only tools", "next allowed actions", "write boundary"]
+      }
+    ],
+    agent_mode: {
+      endpoint,
+      read_tools: ["create_capsule", "attach_proof", "evaluate_gate", "simulate_workflow", "verify_capsule", "publish_public_proof", "compare_capsules", "red_team_capsule"],
+      write_tools: ["sync_proof_capsule_live", "mint_proof_capsule_live"],
+      write_policy: "Write tools require an authorised operator token and are not available from the public verifier."
+    },
+    operator_console: {
+      public_writes: false,
+      queued_transition: transition_plan.queue_id,
+      sync_ready: transition_plan.status === "ready_for_operator_sync",
+      next_safe_action: diagnosis.next_safe_action,
+      actions: ["dry_run_transition", "attach_evidence_ref", "sync_to_dual", "mint_dual_capsule", "generate_handoff_pack"]
+    },
+    public_url: publicUrl,
+    verification_summary: {
+      accepted: verification.accepted,
+      verification_level: verification.verification_level,
+      replay_ok: replay.ok,
+      diagnosis_healthy: diagnosis.healthy
+    }
+  };
 }
 
 function reasonForPolicyResult({ result, missing, unsupportedSources, overMax, reviewRequired }) {
@@ -2620,6 +3223,7 @@ function normalizeScenario(scenario) {
 
 function scenarioFromCapsule(capsule = {}) {
   const id = capsule.capsule_id || "";
+  if (id.includes("UNIVERSAL") || id.includes("MULTI-PROOF")) return "universal_proof_capsule";
   if (id.includes("INSURANCE")) return "insurance_claim";
   if (id.includes("AGENT-MANDATE")) return "agent_mandate_purchase";
   if (id.includes("LUXURY")) return "luxury_resale";

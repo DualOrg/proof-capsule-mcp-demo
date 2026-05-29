@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   buildProofTimeline,
+  buildProofRoom,
   buildPublicVerifierPage,
   buildWorkflowDraft,
   compareCapsules,
@@ -13,6 +14,7 @@ import {
   evaluateCapsulePolicy,
   generateAgentHandoffPack,
   getWorkflowDefinition,
+  listScenarioMarketplace,
   listVerifierMarketplace,
   listSourceVerifiers,
   planTransitionQueue,
@@ -202,6 +204,25 @@ async function handleApi(req, res, url) {
     }));
   }
 
+  if (url.pathname === "/api/proof/room") {
+    if (req.method === "GET") {
+      return sendJson(res, 200, buildProofRoom({
+        scenario: url.searchParams.get("scenario") || undefined,
+        proof_id: url.searchParams.get("proof_id") || url.searchParams.get("id") || undefined,
+        content_hash: url.searchParams.get("content_hash") || url.searchParams.get("hash") || undefined,
+        base_url: `${url.protocol}//${url.host}`,
+        endpoint: `${url.protocol}//${url.host}/mcp`
+      }));
+    }
+    if (req.method === "POST") {
+      return sendJson(res, 200, buildProofRoom({
+        ...(await readBody(req)),
+        base_url: `${url.protocol}//${url.host}`,
+        endpoint: `${url.protocol}//${url.host}/mcp`
+      }));
+    }
+  }
+
   if (req.method === "POST" && url.pathname === "/api/capsule/compare") {
     return sendJson(res, 200, compareCapsules(await readBody(req)));
   }
@@ -242,6 +263,10 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, listVerifierMarketplace({
       sources: (url.searchParams.get("sources") || "").split(",").map((source) => source.trim()).filter(Boolean)
     }));
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/scenarios/marketplace") {
+    return sendJson(res, 200, listScenarioMarketplace());
   }
 
   if (req.method === "POST" && url.pathname === "/api/agent/handoff") {

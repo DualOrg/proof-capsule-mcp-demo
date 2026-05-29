@@ -1,6 +1,7 @@
 import {
   SCENARIOS,
   buildProofTimeline,
+  buildProofRoom,
   buildPublicVerifierPage,
   buildWorkflowDraft,
   compareCapsules,
@@ -9,6 +10,7 @@ import {
   evaluateCapsulePolicy,
   generateAgentHandoffPack,
   getWorkflowDefinition,
+  listScenarioMarketplace,
   listVerifierMarketplace,
   listSourceVerifiers,
   planTransitionQueue,
@@ -34,6 +36,7 @@ function runScenario(scenario) {
   const handoff = generateAgentHandoffPack({ scenario, capsule, endpoint: "http://127.0.0.1:4184/mcp" });
   const proofRun = runProofCapsule({ scenario, capsule, base_url: "http://127.0.0.1:4184", endpoint: "http://127.0.0.1:4184/mcp" });
   const publicVerifier = buildPublicVerifierPage({ scenario, capsule, base_url: "http://127.0.0.1:4184", endpoint: "http://127.0.0.1:4184/mcp" });
+  const proofRoom = buildProofRoom({ scenario, capsule, base_url: "http://127.0.0.1:4184", endpoint: "http://127.0.0.1:4184/mcp" });
   const pinnedPublicVerifier = buildPublicVerifierPage({
     scenario,
     capsule,
@@ -123,6 +126,10 @@ function runScenario(scenario) {
     throw new Error(`${scenario} public verifier page is incomplete.`);
   }
 
+  if (!proofRoom.ok || !proofRoom.proof_room?.source_cards?.length || !proofRoom.proof_room?.agent_mode?.read_tools?.includes("publish_public_proof")) {
+    throw new Error(`${scenario} proof room is incomplete.`);
+  }
+
   if (!pinnedPublicVerifier.ok || !pinnedPublicVerifier.link_integrity?.verified || pinnedPublicVerifier.link_integrity.status !== "link_verified") {
     throw new Error(`${scenario} pinned public verifier link did not verify.`);
   }
@@ -146,6 +153,7 @@ function runScenario(scenario) {
     timelineHash: timeline.timeline_hash,
     proofRunId: proofRun.run_id,
     publicProofId: publicVerifier.public_proof_id,
+    proofRoomId: proofRoom.proof_room.room_id,
     publicLinkVerified: pinnedPublicVerifier.link_integrity.verified,
     tamperedPublicLinkRejected: tamperedPublicVerifier.link_integrity.status === "link_mismatch",
     proofScore: proofRun.proof_score.score,
@@ -163,6 +171,7 @@ const uniqueCapsuleIds = new Set(results.map((result) => result.capsuleId));
 const uniqueSubjectIds = new Set(results.map((result) => result.subjectId));
 const verifierRegistry = listSourceVerifiers();
 const marketplace = listVerifierMarketplace();
+const scenarioMarketplace = listScenarioMarketplace();
 const draft = buildWorkflowDraft({
   title: "Supplier onboarding approval",
   subject_type: "supplier_record",
@@ -194,6 +203,10 @@ if (marketplace.module_count < verifierRegistry.verifier_count || !marketplace.m
   throw new Error("Verifier marketplace is incomplete.");
 }
 
+if (scenarioMarketplace.template_count < 7 || !scenarioMarketplace.templates.some((template) => template.scenario === "universal_proof_capsule")) {
+  throw new Error("Scenario marketplace is incomplete.");
+}
+
 if (!draft.ok || !draftEvidence.ok || !draft.workflow_definition.transitions.length) {
   throw new Error("Workflow builder draft failed.");
 }
@@ -216,6 +229,7 @@ console.log(JSON.stringify({
   advertisedScenariosCovered: results.length === scenarios.length,
   sourceVerifierCount: verifierRegistry.verifier_count,
   marketplaceModuleCount: marketplace.module_count,
+  scenarioTemplateCount: scenarioMarketplace.template_count,
   workflowDraftHash: draft.draft_hash,
   compareHash: comparison.compare_hash,
   publicVerifierUrl: publicVerifier.public_url,
@@ -231,6 +245,7 @@ console.log(JSON.stringify({
     timelineHash: result.timelineHash,
     proofRunId: result.proofRunId,
     publicProofId: result.publicProofId,
+    proofRoomId: result.proofRoomId,
     publicLinkVerified: result.publicLinkVerified,
     tamperedPublicLinkRejected: result.tamperedPublicLinkRejected,
     proofScore: result.proofScore,

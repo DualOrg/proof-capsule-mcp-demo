@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Proof Capsule Control Desk</title>
-    <link rel="stylesheet" href="/styles.css?v=0.5.3-benchmark5">
+    <link rel="stylesheet" href="/styles.css?v=0.6.0-supercharge1">
   </head>
   <body>
     <header class="topbar">
@@ -14,7 +14,7 @@
         </a>
         <div class="brand-copy">
           <h1>Proof Capsule Control Desk</h1>
-          <p>Use-case agnostic proof envelopes with DUAL-anchored verifier state.</p>
+          <p>Use-case agnostic proof rooms with DUAL-anchored verifier state.</p>
         </div>
       </div>
       <div class="header-meta" aria-label="Current proof context">
@@ -71,14 +71,37 @@
       <section class="intro">
         <div>
           <p class="eyebrow">Proof capsule primitive</p>
-          <h2>Bind external tokenised data into one verifier-ready DUAL capsule.</h2>
-          <p class="lede">Composes ownership, documents, telemetry, compliance, settlement, mandate, and DUAL anchor references into deterministic hashes that humans and MCP clients can re-derive.</p>
+          <h2>Encapsulate token, document, attestation, payment, and DUAL state proof into one room.</h2>
+          <p class="lede">Composes ownership, documents, telemetry, compliance, settlement, mandate, and DUAL anchor references into deterministic hashes, source proof cards, and MCP actions that humans and agents can re-derive.</p>
         </div>
         <div class="boundary">
           <span>Boundary</span>
           <strong>Public verify / operator-gated DUAL writes</strong>
           <p>Verification is open. Mint and sync actions require the operator token and write only proof-envelope hashes, refs, state, and metadata to DUAL.</p>
         </div>
+      </section>
+
+      <section class="supercharge-grid" aria-label="Supercharged proof capsule capabilities">
+        <article>
+          <span>Multi-proof</span>
+          <strong>One capsule, many proof sources</strong>
+          <p>Solana ownership, DUAL state, IPFS documents, signed attestations, payment previews, and vault mandates share one verifier envelope.</p>
+        </article>
+        <article>
+          <span>Proof room</span>
+          <strong>Shareable evidence surface</strong>
+          <p>Public pages now expose source cards, DUAL links, what-is-proven limits, downloads, and tamper status without write authority.</p>
+        </article>
+        <article>
+          <span>Agent mode</span>
+          <strong>MCP-native workflow model</strong>
+          <p>Agents can create, attach, evaluate, simulate, verify, publish, compare, and red-team capsules through read-safe tools.</p>
+        </article>
+        <article>
+          <span>Operator console</span>
+          <strong>Controlled live DUAL actions</strong>
+          <p>Sync and mint stay behind the operator token; public writes remain false and raw evidence stays in source systems.</p>
+        </article>
       </section>
 
       <section id="publicVerifierBanner" class="panel public-verifier-banner" hidden>
@@ -117,6 +140,28 @@
         </div>
       </section>
 
+      <section id="proofRoomPanel" class="panel proof-room" hidden>
+        <div class="panel-title">
+          <span>Proof room</span>
+          <strong id="proofRoomStatus">Not published</strong>
+        </div>
+        <div class="proof-room-summary" id="proofRoomSummary"></div>
+        <div class="proof-room-grid">
+          <div>
+            <h3>Source proof cards</h3>
+            <div id="proofRoomSources" class="workflow-stack"></div>
+          </div>
+          <div>
+            <h3>What this proves</h3>
+            <div id="proofRoomProves" class="support-checklist"></div>
+          </div>
+          <div>
+            <h3>Agent + operator boundary</h3>
+            <div id="proofRoomAgent" class="hash-stack"></div>
+          </div>
+        </div>
+      </section>
+
       <section class="workspace">
         <aside class="panel controls" id="scenarioPanel">
           <div class="panel-title">
@@ -125,6 +170,7 @@
           </div>
           <label for="scenarioSelect">Capsule scenario</label>
           <select id="scenarioSelect">
+            <option value="universal_proof_capsule">Universal multi-proof capsule</option>
             <option value="tradeflow_medical_devices">TradeFlow medical devices</option>
             <option value="insurance_claim">Insurance claim evidence</option>
             <option value="agent_mandate_purchase">Agent mandate purchase</option>
@@ -164,6 +210,13 @@
           <div class="mcp-card">
             <span>MCP endpoint</span>
             <code id="endpoint">http://127.0.0.1:4184/mcp</code>
+          </div>
+          <div class="control-group">
+            <div class="panel-title compact-title">
+              <span>Scenario marketplace</span>
+              <strong id="scenarioMarketStatus">Loading</strong>
+            </div>
+            <div id="scenarioMarketplaceStack" class="marketplace-stack"></div>
           </div>
         </aside>
 
@@ -369,6 +422,6 @@
       </section>
     </main>
 
-    <script type="module" src="/client.js?v=0.5.3-benchmark5"></script>
+    <script type="module" src="/client.js?v=0.6.0-supercharge1"></script>
   </body>
 </html>
