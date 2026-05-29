@@ -1,8 +1,31 @@
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpServer, getMcpDescriptor } from "../src/mcp-server.mjs";
+import { assertJsonPayload } from "./_http.mjs";
 
-function setCors(res) {
-  res.setHeader("access-control-allow-origin", "*");
+const DEFAULT_ALLOWED_ORIGINS = [
+  "https://proof-capsule-mcp-demo.vercel.app",
+  "http://127.0.0.1:4184",
+  "http://localhost:4184"
+];
+
+function allowedOrigins() {
+  const configured = String(process.env.DEMO_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  return configured.length ? configured : DEFAULT_ALLOWED_ORIGINS;
+}
+
+function isAllowedOrigin(origin = "") {
+  return allowedOrigins().includes(origin) || /^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(origin);
+}
+
+function setCors(req, res) {
+  const origin = req?.headers?.origin;
+  if (origin && isAllowedOrigin(origin)) {
+    res.setHeader("access-control-allow-origin", origin);
+    res.setHeader("vary", "origin");
+  }
   res.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
   res.setHeader("access-control-allow-headers", "content-type, authorization, x-demo-operator-token, mcp-session-id");
   res.setHeader("cache-control", "no-store, max-age=0, must-revalidate");
@@ -11,7 +34,7 @@ function setCors(res) {
 }
 
 export default async function handler(req, res) {
-  setCors(res);
+  setCors(req, res);
 
   if (req.method === "OPTIONS") {
     res.status(204).end();
@@ -40,11 +63,12 @@ export default async function handler(req, res) {
   });
 
   try {
+    if (req.body) assertJsonPayload(req.body);
     await server.connect(transport);
     await transport.handleRequest(req, res, req.body);
   } catch (error) {
     if (!res.headersSent) {
-      res.status(500).json({ ok: false, error: error.message || "MCP request failed." });
+      res.status(error.status || 500).json({ ok: false, error: error.message || "MCP request failed." });
     }
   }
 }

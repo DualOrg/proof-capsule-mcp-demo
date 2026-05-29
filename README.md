@@ -4,7 +4,7 @@ Proof Capsule is the use-case-agnostic DUAL primitive behind TradeFlow-style pro
 
 This sandbox exposes that primitive through a Streamable HTTP MCP endpoint and a small UI. In production it can read from a live DUAL object and execute operator-gated event-bus mint/sync writes.
 
-The v0.4 model adds the operator workflow layer on top of replay: workflow builder, evidence intake checks, transition dry-runs, recovery actions, lifecycle timeline, verifier modules, capsule compare, and agent handoff packs. Live writes remain operator-gated.
+The v0.4 model adds the operator workflow layer on top of replay: workflow builder, evidence intake checks, transition dry-runs, recovery actions, lifecycle timeline, verifier modules, capsule compare, and agent handoff packs. The v0.4.1 hardening pass adds safe external-link rendering, bounded JSON payload handling, and clearer runtime-scoped operator attempt-limit reporting. Live writes remain operator-gated.
 
 ## Scope
 
@@ -66,7 +66,7 @@ Run one controlled operator-gated write:
 npm run proof:dual:write
 ```
 
-The write path refuses public writes, uses constant-time operator-token comparison, applies a small invalid-token attempt cap, checks org balance before event-bus actions, writes only proof-envelope metadata/hashes/evidence refs, and re-reads DUAL before reporting success.
+The write path refuses public writes, uses constant-time operator-token comparison, applies a runtime-local invalid-token attempt cap, checks org balance before event-bus actions, writes only proof-envelope metadata/hashes/evidence refs, and re-reads DUAL before reporting success. The attempt cap is a best-effort process/serverless-instance guard; the primary shared control is the high-entropy operator token.
 
 ## MCP Surface
 

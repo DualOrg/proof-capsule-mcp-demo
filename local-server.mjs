@@ -44,23 +44,58 @@ const mimeTypes = {
   ".png": "image/png",
   ".md": "text/markdown; charset=utf-8"
 };
+const MAX_JSON_BODY_BYTES = Number(process.env.DEMO_MAX_JSON_BODY_BYTES || 512 * 1024);
+const MAX_JSON_DEPTH = Number(process.env.DEMO_MAX_JSON_DEPTH || 32);
 
 function setCors(res) {
   res.setHeader("access-control-allow-origin", "*");
   res.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
-  res.setHeader("access-control-allow-headers", "content-type, mcp-session-id");
+  res.setHeader("access-control-allow-headers", "content-type, authorization, x-demo-operator-token, mcp-session-id");
   res.setHeader("cache-control", "no-store, max-age=0, must-revalidate");
   res.setHeader("pragma", "no-cache");
   res.setHeader("expires", "0");
 }
 
+function rejectPayload(message, status = 413) {
+  const error = new Error(message);
+  error.status = status;
+  throw error;
+}
+
+function assertPayloadDepth(value, depth = 0, seen = new WeakSet()) {
+  if (depth > MAX_JSON_DEPTH) rejectPayload(`JSON payload exceeds maximum depth of ${MAX_JSON_DEPTH}.`, 400);
+  if (!value || typeof value !== "object") return;
+  if (seen.has(value)) rejectPayload("JSON payload cannot contain circular references.", 400);
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const item of value) assertPayloadDepth(item, depth + 1, seen);
+    return;
+  }
+  for (const key of Object.keys(value)) assertPayloadDepth(value[key], depth + 1, seen);
+}
+
+function parseJsonBody(raw) {
+  if (Number.isFinite(MAX_JSON_BODY_BYTES) && Buffer.byteLength(raw, "utf8") > MAX_JSON_BODY_BYTES) {
+    rejectPayload(`JSON payload exceeds ${MAX_JSON_BODY_BYTES} bytes.`);
+  }
+  const payload = JSON.parse(raw || "{}");
+  assertPayloadDepth(payload);
+  return payload;
+}
+
 async function readBody(req) {
   let body = "";
-  for await (const chunk of req) body += chunk;
+  for await (const chunk of req) {
+    body += chunk;
+    if (Number.isFinite(MAX_JSON_BODY_BYTES) && Buffer.byteLength(body, "utf8") > MAX_JSON_BODY_BYTES) {
+      rejectPayload(`JSON payload exceeds ${MAX_JSON_BODY_BYTES} bytes.`);
+    }
+  }
   if (!body) return {};
   try {
-    return JSON.parse(body);
-  } catch {
+    return parseJsonBody(body);
+  } catch (parseError) {
+    if (parseError.status) throw parseError;
     const error = new Error("Request body must be valid JSON.");
     error.status = 400;
     throw error;

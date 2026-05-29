@@ -16,12 +16,20 @@ export const LOCAL_OBJECT_ID = "proof-capsule-object-local-v1";
 export const OPERATOR_TOKEN_MIN_LENGTH = 32;
 const configuredAttemptLimit = Number(process.env.DEMO_OPERATOR_ATTEMPT_LIMIT || 12);
 const configuredAttemptWindowMs = Number(process.env.DEMO_OPERATOR_ATTEMPT_WINDOW_MS || 5 * 60 * 1000);
+const configuredMaxJsonBodyBytes = Number(process.env.DEMO_MAX_JSON_BODY_BYTES || 512 * 1024);
+const configuredMaxJsonDepth = Number(process.env.DEMO_MAX_JSON_DEPTH || 32);
 export const OPERATOR_ATTEMPT_LIMIT = Number.isFinite(configuredAttemptLimit) && configuredAttemptLimit > 0
   ? configuredAttemptLimit
   : 12;
 export const OPERATOR_ATTEMPT_WINDOW_MS = Number.isFinite(configuredAttemptWindowMs) && configuredAttemptWindowMs > 0
   ? configuredAttemptWindowMs
   : 5 * 60 * 1000;
+export const MAX_JSON_BODY_BYTES = Number.isFinite(configuredMaxJsonBodyBytes) && configuredMaxJsonBodyBytes > 0
+  ? configuredMaxJsonBodyBytes
+  : 512 * 1024;
+export const MAX_JSON_DEPTH = Number.isFinite(configuredMaxJsonDepth) && configuredMaxJsonDepth > 0
+  ? configuredMaxJsonDepth
+  : 32;
 
 const operatorFailures = new Map();
 
@@ -82,8 +90,11 @@ export function readiness() {
       operatorGate: config.operatorToken ? operatorTokenStrong ? "configured_high_entropy" : "configured_weak" : "not_configured",
       operatorAttemptLimit: {
         enabled: true,
+        scope: process.env.VERCEL ? "per_serverless_instance" : "per_node_process",
+        durability: "best_effort_process_memory",
         maxFailures: OPERATOR_ATTEMPT_LIMIT,
-        windowSeconds: Math.round(OPERATOR_ATTEMPT_WINDOW_MS / 1000)
+        windowSeconds: Math.round(OPERATOR_ATTEMPT_WINDOW_MS / 1000),
+        note: "The shared control is the high-entropy operator token; the attempt limiter is local to the active runtime instance."
       },
       proofLevel: readbackReady ? "dual_readback_rederived" : "local_rederived"
     },
@@ -401,13 +412,70 @@ export async function requirePositiveBalance(config = dualConfig()) {
   return { ready, value };
 }
 
+function rejectLivePayload(message, status = 413) {
+  const error = new Error(message);
+  error.status = status;
+  error.code = "PAYLOAD_REJECTED";
+  throw error;
+}
+
+function assertLivePayloadDepth(value, depth = 0, seen = new WeakSet()) {
+  if (depth > MAX_JSON_DEPTH) rejectLivePayload(`JSON payload exceeds maximum depth of ${MAX_JSON_DEPTH}.`, 400);
+  if (!value || typeof value !== "object") return;
+  if (seen.has(value)) rejectLivePayload("JSON payload cannot contain circular references.", 400);
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const item of value) assertLivePayloadDepth(item, depth + 1, seen);
+    return;
+  }
+  for (const key of Object.keys(value)) assertLivePayloadDepth(value[key], depth + 1, seen);
+}
+
+function assertLiveJsonPayload(value, raw = "") {
+  const byteLength = raw
+    ? Buffer.byteLength(raw, "utf8")
+    : Buffer.byteLength(JSON.stringify(value || {}), "utf8");
+  if (byteLength > MAX_JSON_BODY_BYTES) {
+    rejectLivePayload(`JSON payload exceeds ${MAX_JSON_BODY_BYTES} bytes.`);
+  }
+  assertLivePayloadDepth(value);
+}
+
+function parseLiveJson(raw) {
+  try {
+    return JSON.parse(raw || "{}");
+  } catch {
+    const error = new Error("Request body must be valid JSON.");
+    error.status = 400;
+    error.code = "INVALID_JSON";
+    throw error;
+  }
+}
+
 export async function readBody(request) {
-  if (request.body && typeof request.body === "object" && !request.readable) return request.body;
-  if (typeof request.body === "string") return JSON.parse(request.body || "{}");
+  if (request.body && typeof request.body === "object" && !request.readable) {
+    assertLiveJsonPayload(request.body);
+    return request.body;
+  }
+  if (typeof request.body === "string") {
+    const payload = parseLiveJson(request.body);
+    assertLiveJsonPayload(payload, request.body || "{}");
+    return payload;
+  }
   const chunks = [];
-  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  let bytes = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.from(chunk);
+    bytes += buffer.length;
+    if (bytes > MAX_JSON_BODY_BYTES) {
+      rejectLivePayload(`JSON payload exceeds ${MAX_JSON_BODY_BYTES} bytes.`);
+    }
+    chunks.push(buffer);
+  }
   const raw = Buffer.concat(chunks).toString("utf8") || "{}";
-  return JSON.parse(raw);
+  const payload = parseLiveJson(raw);
+  assertLiveJsonPayload(payload, raw);
+  return payload;
 }
 
 export function sendJson(response, statusCode, payload) {

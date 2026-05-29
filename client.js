@@ -40,6 +40,16 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function safeExternalUrl(value) {
+  try {
+    const url = new URL(String(value || ""), window.location.origin);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
 function scenario() {
   return $("scenarioSelect").value;
 }
@@ -112,12 +122,12 @@ function renderCapsule(capsule, outputTitle = "Current capsule JSON") {
     ["DUAL template", capsule.dual_anchor?.template_explorer_url],
     ["Solana tx", capsule.external_anchors?.find((anchor) => anchor.chain === "solana")?.explorer_url],
     ["IPFS document", capsule.evidence_refs?.find((ref) => ref.source === "ipfs")?.explorer_url]
-  ].filter(([, href]) => Boolean(href));
+  ].map(([label, href]) => [label, safeExternalUrl(href), href]).filter(([, safeHref]) => Boolean(safeHref));
 
-  $("linkStack").innerHTML = links.map(([label, href]) => `
+  $("linkStack").innerHTML = links.map(([label, safeHref, originalHref]) => `
     <div class="link-row">
       <span>${escapeHtml(label)}</span>
-      <a href="${escapeAttribute(href)}" target="_blank" rel="noreferrer">${escapeHtml(href)}</a>
+      <a href="${escapeAttribute(safeHref)}" target="_blank" rel="noreferrer noopener">${escapeHtml(originalHref)}</a>
     </div>
   `).join("");
 

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const SERVICE_NAME = "dual-proof-capsule-mcp";
-export const SERVICE_VERSION = "0.4.0";
+export const SERVICE_VERSION = "0.4.1";
 export const CAPSULE_SCHEMA_VERSION = "proof-capsule.v0.1";
 export const CUSTOM_WORKFLOW_SCHEMA_VERSION = "proof-capsule-workflow-draft.v0.1";
 export const GENERATED_AT = "2026-05-29T00:00:00.000Z";
