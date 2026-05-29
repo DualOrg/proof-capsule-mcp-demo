@@ -4,6 +4,8 @@ Proof Capsule is the use-case-agnostic DUAL primitive behind TradeFlow-style pro
 
 This sandbox exposes that primitive through a Streamable HTTP MCP endpoint and a small UI. In production it can read from a live DUAL object and execute operator-gated event-bus mint/sync writes.
 
+The v0.3 model adds the piece that makes the concept reusable rather than just vertical-demo shaped: each capsule can be replayed through a DUAL workflow definition. A workflow definition describes the DUAL template/object contract, allowed states, event-bus transitions, required evidence per transition, source verifier contracts, freshness rules, and readback checks.
+
 ## Scope
 
 - Local demo path: `sandbox/proof-capsule-mcp-demo`
@@ -78,6 +80,10 @@ Tools:
 - `evaluate_capsule_policy`
 - `red_team_capsule`
 - `get_capsule_handoff`
+- `list_workflow_templates`
+- `get_workflow_definition`
+- `replay_workflow_capsule`
+- `list_source_verifiers`
 - `sync_proof_capsule_live`
 - `mint_proof_capsule_live`
 
@@ -90,10 +96,13 @@ Resources:
 - `capsule://scorecard`
 - `capsule://dual/status`
 - `capsule://dual/current`
+- `capsule://workflows`
+- `capsule://source-verifiers`
 
 Resource template:
 
 - `capsule://demo/{scenario}`
+- `capsule://workflow/{scenario}`
 - Covered scenarios: `tradeflow_medical_devices`, `insurance_claim`, `agent_mandate_purchase`, `luxury_resale`, `carbon_credit`
 
 Prompts:
@@ -101,6 +110,31 @@ Prompts:
 - `proof_capsule_review`
 - `mcp_client_handoff`
 - `red_team_capsule_boundary`
+- `design_proof_capsule_workflow`
+
+## Workflow Model
+
+The reusable DUAL architecture is:
+
+```text
+DUAL template -> DUAL object -> event-bus transition -> policy gate -> readback -> hash replay
+```
+
+The MCP can model any workflow that can be represented as:
+
+```text
+subject + claims + evidence refs + source verifiers + policy gate + decision + state transition
+```
+
+Each scenario now exposes a workflow definition with:
+
+- allowed states and transitions;
+- required evidence types per transition;
+- point-in-time freshness/recheck rules;
+- source verifier contracts for Solana, DUAL, IPFS, telemetry, customs, insurance, escrow, registries, vaults, and attestations;
+- DUAL build contract: one object per workflow instance, event-bus writes, operator gate, public writes off, readback after write.
+
+`replay_workflow_capsule` proves the capsule is not just a hash bundle. It checks that the declared state transition is allowed by the workflow, required evidence exists, all evidence sources have verifier contracts, policy did not block the transition, hashes re-derive, and the write boundary remains operator-gated.
 
 ## Proof Semantics
 

@@ -6,7 +6,10 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import {
   composeProofCapsule,
   evaluateCapsulePolicy,
+  getWorkflowDefinition,
+  listSourceVerifiers,
   redTeamCapsule,
+  replayWorkflowCapsule,
   verifyProofCapsule
 } from "./src/capsule-core.mjs";
 import {
@@ -125,6 +128,18 @@ async function handleApi(req, res, url) {
 
   if (req.method === "POST" && url.pathname === "/api/capsule/red-team") {
     return sendJson(res, 200, redTeamCapsule(await readBody(req)));
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/workflow/definition") {
+    return sendJson(res, 200, getWorkflowDefinition({ scenario: url.searchParams.get("scenario") || undefined }));
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/workflow/replay") {
+    return sendJson(res, 200, replayWorkflowCapsule(await readBody(req)));
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/source/verifiers") {
+    return sendJson(res, 200, listSourceVerifiers());
   }
 
   if (req.method === "POST" && url.pathname === "/api/capsules/sync") {

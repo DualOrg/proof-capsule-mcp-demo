@@ -25,7 +25,10 @@ async function post(path, body) {
 const status = await get("/api/status");
 const dual = await get("/api/dual/status");
 const demo = await get("/api/capsule/demo?scenario=luxury_resale");
+const workflow = await get("/api/workflow/definition?scenario=luxury_resale");
+const verifiers = await get("/api/source/verifiers");
 const verification = await post("/api/capsule/verify", { capsule: demo.capsule });
+const replay = await post("/api/workflow/replay", { scenario: "luxury_resale", capsule: demo.capsule });
 const redTeam = await post("/api/capsule/red-team", { attack: "live_write_escalation" });
 const mcp = await get("/mcp");
 
@@ -33,8 +36,12 @@ const ok = Boolean(
   status.publicWrites === false
   && dual.publicWrites === false
   && verification.accepted
+  && workflow.workflow_id
+  && replay.ok
+  && verifiers.verifier_count >= 10
   && redTeam.blocked
   && mcp.tools?.includes("sync_proof_capsule_live")
+  && mcp.tools?.includes("replay_workflow_capsule")
 );
 
 console.log(JSON.stringify({
@@ -47,6 +54,9 @@ console.log(JSON.stringify({
   publicWrites: status.publicWrites,
   mcpToolCount: mcp.tools?.length || 0,
   verifiedScenario: demo.capsule?.capsule_id,
+  workflowId: workflow.workflow_id,
+  workflowReplayHash: replay.hash_replay?.workflow_replay_hash,
+  sourceVerifierCount: verifiers.verifier_count,
   redTeamCode: redTeam.code
 }, null, 2));
 

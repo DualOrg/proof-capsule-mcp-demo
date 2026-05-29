@@ -19,8 +19,12 @@ for (const required of [
   "get_capsule_handoff",
   "get_capsule_status",
   "get_live_dual_status",
+  "get_workflow_definition",
+  "list_source_verifiers",
+  "list_workflow_templates",
   "mint_proof_capsule_live",
   "red_team_capsule",
+  "replay_workflow_capsule",
   "sync_proof_capsule_live",
   "verify_proof_capsule"
 ]) {
@@ -48,7 +52,9 @@ for (const required of [
   "capsule://manifest",
   "capsule://policy/default",
   "capsule://schema",
-  "capsule://scorecard"
+  "capsule://scorecard",
+  "capsule://source-verifiers",
+  "capsule://workflows"
 ]) {
   if (!resourceUris.includes(required)) throw new Error(`Missing resource: ${required}`);
 }
@@ -57,10 +63,13 @@ const templates = await client.listResourceTemplates();
 if (!templates.resourceTemplates.some((template) => template.uriTemplate === "capsule://demo/{scenario}")) {
   throw new Error("Missing scenario resource template.");
 }
+if (!templates.resourceTemplates.some((template) => template.uriTemplate === "capsule://workflow/{scenario}")) {
+  throw new Error("Missing workflow resource template.");
+}
 
 const prompts = await client.listPrompts();
 const promptNames = prompts.prompts.map((prompt) => prompt.name);
-for (const required of ["proof_capsule_review", "mcp_client_handoff", "red_team_capsule_boundary"]) {
+for (const required of ["proof_capsule_review", "mcp_client_handoff", "red_team_capsule_boundary", "design_proof_capsule_workflow"]) {
   if (!promptNames.includes(required)) throw new Error(`Missing prompt: ${required}`);
 }
 
@@ -96,6 +105,30 @@ const evaluation = await client.callTool({
 });
 if (evaluation.structuredContent?.result === "Blocked") {
   throw new Error("Default capsule should not be blocked.");
+}
+
+const workflow = await client.callTool({
+  name: "get_workflow_definition",
+  arguments: { scenario: "tradeflow_medical_devices" }
+});
+if (!workflow.structuredContent?.workflow_id || !workflow.structuredContent?.transitions?.length) {
+  throw new Error("Workflow definition did not expose a reusable state machine.");
+}
+
+const replay = await client.callTool({
+  name: "replay_workflow_capsule",
+  arguments: { scenario: "tradeflow_medical_devices", capsule }
+});
+if (!replay.structuredContent?.ok || !replay.structuredContent?.hash_replay?.workflow_replay_hash) {
+  throw new Error("Workflow replay did not verify the capsule.");
+}
+
+const verifiers = await client.callTool({
+  name: "list_source_verifiers",
+  arguments: {}
+});
+if ((verifiers.structuredContent?.verifier_count || 0) < 10) {
+  throw new Error("Source verifier registry is too thin.");
 }
 
 const scenarioCapsules = [];
@@ -142,6 +175,9 @@ console.log(JSON.stringify({
   contentHash: capsule.hashes.capsule_content_hash,
   verifierOk: verified.structuredContent.ok,
   policyResult: evaluation.structuredContent.result,
+  workflowId: workflow.structuredContent.workflow_id,
+  workflowReplayHash: replay.structuredContent.hash_replay.workflow_replay_hash,
+  sourceVerifierCount: verifiers.structuredContent.verifier_count,
   scenarioCoverage: scenarioCapsules,
   liveWriteBlocked: redTeam.structuredContent.blocked
 }, null, 2));

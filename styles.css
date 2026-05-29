@@ -328,13 +328,16 @@ h3 {
 }
 
 .hash-stack,
-.link-stack {
+.link-stack,
+.workflow-stack {
   display: grid;
   gap: 8px;
 }
 
 .hash-row,
-.link-row {
+.link-row,
+.workflow-row,
+.replay-card {
   border: 1px solid var(--line);
   background: #f8fbfb;
   border-radius: 6px;
@@ -342,13 +345,54 @@ h3 {
   min-width: 0;
 }
 
+.replay-card {
+  margin-bottom: 12px;
+}
+
 .hash-row strong,
-.link-row a {
+.link-row a,
+.workflow-row strong,
+.replay-card strong {
   display: block;
   margin-top: 4px;
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 12px;
   overflow-wrap: anywhere;
+}
+
+.workflow-row span,
+.replay-card span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.workflow-row p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.workflow-row.current {
+  border-color: #8ad4dc;
+  background: #e8fbfd;
+}
+
+.workflow-row.previous,
+.workflow-row.completed {
+  border-color: #badfc9;
+  background: var(--mint);
+}
+
+.safe-text {
+  color: #16623d;
+}
+
+.warn-text {
+  color: #8a4e00;
 }
 
 .link-stack {
@@ -363,6 +407,13 @@ h3 {
 
 .output {
   margin-top: 16px;
+}
+
+.workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
 }
 
 pre {
@@ -385,7 +436,8 @@ pre {
 
   .metric-grid,
   .bands,
-  .evidence-list {
+  .evidence-list,
+  .workflow-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -409,7 +461,8 @@ pre {
 
   .metric-grid,
   .bands,
-  .evidence-list {
+  .evidence-list,
+  .workflow-grid {
     grid-template-columns: 1fr;
   }
 

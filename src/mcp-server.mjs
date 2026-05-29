@@ -11,8 +11,12 @@ import {
   composeProofCapsule,
   defaultPolicy,
   evaluateCapsulePolicy,
+  getWorkflowDefinition,
   handoff,
+  listSourceVerifiers,
+  listWorkflowTemplates,
   redTeamCapsule,
+  replayWorkflowCapsule,
   scorecard,
   verifyProofCapsule
 } from "./capsule-core.mjs";
@@ -217,6 +221,28 @@ export function createMcpServer() {
   );
 
   server.registerResource(
+    "workflows",
+    "capsule://workflows",
+    {
+      title: "Proof Capsule Workflow Templates",
+      description: "Reusable DUAL workflow definitions that bind proof capsules to state transitions.",
+      mimeType: "application/json"
+    },
+    async (uri) => ({ contents: [{ uri: uri.href, text: JSON.stringify(listWorkflowTemplates(), null, 2) }] })
+  );
+
+  server.registerResource(
+    "source-verifiers",
+    "capsule://source-verifiers",
+    {
+      title: "Proof Capsule Source Verifier Registry",
+      description: "Source-system verifier contracts and point-in-time proof boundaries.",
+      mimeType: "application/json"
+    },
+    async (uri) => ({ contents: [{ uri: uri.href, text: JSON.stringify(listSourceVerifiers(), null, 2) }] })
+  );
+
+  server.registerResource(
     "dual-status",
     "capsule://dual/status",
     {
@@ -267,6 +293,35 @@ export function createMcpServer() {
     })
   );
 
+  server.registerResource(
+    "workflow-template",
+    new ResourceTemplate("capsule://workflow/{scenario}", {
+      list: async () => ({
+        resources: SCENARIOS.map((scenario) => ({
+          uri: `capsule://workflow/${scenario}`,
+          name: `${scenario}-workflow`,
+          title: `${scenario.replaceAll("_", " ")} Workflow Definition`,
+          description: "DUAL lifecycle/state-machine definition for this Proof Capsule scenario.",
+          mimeType: "application/json"
+        }))
+      }),
+      complete: {
+        scenario: (value) => SCENARIOS.filter((scenario) => scenario.startsWith(value || ""))
+      }
+    }),
+    {
+      title: "Scenario Workflow Definition",
+      description: "Read a reusable DUAL workflow definition by scenario slug.",
+      mimeType: "application/json"
+    },
+    async (uri, variables) => ({
+      contents: [{
+        uri: uri.href,
+        text: JSON.stringify(getWorkflowDefinition({ scenario: variables.scenario }), null, 2)
+      }]
+    })
+  );
+
   server.registerTool(
     "get_capsule_status",
     {
@@ -286,7 +341,6 @@ export function createMcpServer() {
       title: "Get Live DUAL Status",
       description: "Return DUAL readback readiness, object/template IDs, and operator-gated write boundary.",
       inputSchema: {},
-      outputSchema: unknownRecord,
       annotations: READ_ONLY_ANNOTATIONS,
       _meta: TOOL_META
     },
@@ -301,7 +355,6 @@ export function createMcpServer() {
       inputSchema: {
         scenario: scenarioSchema.optional()
       },
-      outputSchema: unknownRecord,
       annotations: READ_ONLY_ANNOTATIONS,
       _meta: TOOL_META
     },
@@ -426,6 +479,59 @@ export function createMcpServer() {
   );
 
   server.registerTool(
+    "list_workflow_templates",
+    {
+      title: "List Workflow Templates",
+      description: "List reusable DUAL Proof Capsule workflow/state-machine templates.",
+      inputSchema: {},
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async () => jsonText(listWorkflowTemplates())
+  );
+
+  server.registerTool(
+    "get_workflow_definition",
+    {
+      title: "Get Workflow Definition",
+      description: "Return the DUAL lifecycle/state-machine definition for a Proof Capsule scenario.",
+      inputSchema: {
+        scenario: scenarioSchema.optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(getWorkflowDefinition(input))
+  );
+
+  server.registerTool(
+    "replay_workflow_capsule",
+    {
+      title: "Replay Workflow Capsule",
+      description: "Replay a capsule through its DUAL workflow definition: transition, evidence, source verifier, policy, hash, and write-boundary checks.",
+      inputSchema: {
+        capsule: z.record(z.string(), z.unknown()).optional(),
+        scenario: scenarioSchema.optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async (input) => jsonText(replayWorkflowCapsule(input))
+  );
+
+  server.registerTool(
+    "list_source_verifiers",
+    {
+      title: "List Source Verifiers",
+      description: "List source verifier contracts for point-in-time external proof refs.",
+      inputSchema: {},
+      annotations: READ_ONLY_ANNOTATIONS,
+      _meta: TOOL_META
+    },
+    async () => jsonText(listSourceVerifiers())
+  );
+
+  server.registerTool(
     "sync_proof_capsule_live",
     {
       title: "Sync Proof Capsule Live",
@@ -436,7 +542,6 @@ export function createMcpServer() {
         capsule: z.record(z.string(), z.unknown()).optional(),
         audit: z.record(z.string(), z.unknown()).optional()
       },
-      outputSchema: unknownRecord,
       annotations: WRITE_ANNOTATIONS,
       _meta: TOOL_META
     },
@@ -458,7 +563,6 @@ export function createMcpServer() {
         audit: z.record(z.string(), z.unknown()).optional(),
         force: z.boolean().optional()
       },
-      outputSchema: unknownRecord,
       annotations: WRITE_ANNOTATIONS,
       _meta: TOOL_META
     },
@@ -509,6 +613,22 @@ export function createMcpServer() {
       }
     },
     ({ scenario }) => textPrompt(`Red-team ${scenario || "the proof capsule"} against missing evidence, unsupported source systems, stale ownership, hash tampering, public-write exposure, and un-gated live DUAL write escalation. Current DUAL readiness: ${JSON.stringify(readiness())}`)
+  );
+
+  server.registerPrompt(
+    "design_proof_capsule_workflow",
+    {
+      title: "Design a Proof Capsule Workflow",
+      description: "Convert a business process into a DUAL template/object/event-bus workflow with source verifier contracts.",
+      argsSchema: {
+        workflow: z.string().optional()
+      }
+    },
+    ({ workflow }) => textPrompt([
+      `Design a DUAL Proof Capsule workflow for: ${workflow || "the supplied process"}.`,
+      "Return: subject, states, allowed transitions, required evidence per transition, source verifier contracts, freshness rules, DUAL template fields, event-bus actions, readback checks, and public/operator write boundary.",
+      "Treat external facts as point-in-time and DUAL as the governed proof/state layer."
+    ].join("\n"))
   );
 
   return server;

@@ -86,6 +86,29 @@ function renderCapsule(capsule, outputTitle = "Current capsule JSON") {
   $("output").textContent = JSON.stringify(capsule, null, 2);
 }
 
+function renderWorkflow(definition, replay) {
+  $("replayStatus").textContent = replay.ok ? "Replay verified" : "Replay blocked";
+  $("replayStatus").className = replay.ok ? "safe-text" : "warn-text";
+
+  $("workflowStack").innerHTML = (definition.states || []).map((state) => {
+    const item = (replay.state_timeline || []).find((entry) => entry.state === state);
+    return `
+      <div class="workflow-row ${escapeAttribute(item?.status || "pending")}">
+        <span>${escapeHtml(item?.status || "pending")}</span>
+        <strong>${escapeHtml(state)}</strong>
+      </div>
+    `;
+  }).join("");
+
+  $("sourceVerifierStack").innerHTML = (replay.source_verifier_summary || []).slice(0, 6).map((item) => `
+    <div class="workflow-row">
+      <span>${escapeHtml(item.source)} / ${escapeHtml(item.mode)}</span>
+      <strong>${escapeHtml(item.type)}</strong>
+      <p>${escapeHtml(item.freshness_rule)}</p>
+    </div>
+  `).join("");
+}
+
 function renderStatus(status) {
   liveStatus = status;
   $("dualStatus").textContent = status?.readbackReady ? "DUAL live" : "Local proof";
@@ -116,6 +139,7 @@ async function compose() {
   const scenario = $("scenarioSelect").value;
   const payload = await jsonFetch(`/api/capsule/demo?scenario=${encodeURIComponent(scenario)}`);
   renderCapsule(payload.capsule, "Composed Proof Capsule JSON");
+  await loadWorkflow(payload.capsule);
 }
 
 async function verify() {
@@ -141,7 +165,21 @@ async function redTeam() {
 async function loadCurrentLive() {
   const payload = await jsonFetch("/api/capsule/current");
   if (payload.capsule) renderCapsule(payload.capsule, payload.source === "dual_readback" ? "Live DUAL readback capsule" : "Local seed capsule");
+  if (payload.capsule) await loadWorkflow(payload.capsule);
   $("output").textContent = JSON.stringify(payload, null, 2);
+}
+
+async function loadWorkflow(capsule = currentCapsule) {
+  const scenario = $("scenarioSelect").value;
+  const [definition, replay] = await Promise.all([
+    jsonFetch(`/api/workflow/definition?scenario=${encodeURIComponent(scenario)}`),
+    jsonFetch("/api/workflow/replay", {
+      method: "POST",
+      body: JSON.stringify({ scenario, capsule })
+    })
+  ]);
+  renderWorkflow(definition, replay);
+  return { definition, replay };
 }
 
 function operatorHeaders() {
@@ -164,6 +202,7 @@ async function syncLive() {
   });
   $("verifyStatus").textContent = payload.verification?.ok ? "DUAL synced" : "Sync issue";
   if (payload.capsule) renderCapsule(payload.capsule, "Live DUAL sync result");
+  if (payload.capsule) await loadWorkflow(payload.capsule);
   $("outputTitle").textContent = "Live DUAL sync result";
   $("output").textContent = JSON.stringify(payload, null, 2);
   await loadStatus();
@@ -184,6 +223,7 @@ async function mintLive() {
   });
   $("verifyStatus").textContent = payload.verification?.ok ? "DUAL minted" : "Mint issue";
   if (payload.capsule) renderCapsule(payload.capsule, "Live DUAL mint result");
+  if (payload.capsule) await loadWorkflow(payload.capsule);
   $("outputTitle").textContent = "Live DUAL mint result";
   $("output").textContent = JSON.stringify(payload, null, 2);
   await loadStatus();

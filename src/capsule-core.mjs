@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const SERVICE_NAME = "dual-proof-capsule-mcp";
-export const SERVICE_VERSION = "0.2.0";
+export const SERVICE_VERSION = "0.3.0";
 export const CAPSULE_SCHEMA_VERSION = "proof-capsule.v0.1";
 export const GENERATED_AT = "2026-05-29T00:00:00.000Z";
 export const WRITE_BOUNDARY = "Public read/generate/verify. Live DUAL writes are available only through server-side operator-gated endpoints; no public writes, wallet actions, raw evidence storage, or settlement execution.";
@@ -24,6 +24,256 @@ export const SCENARIOS = [
   "luxury_resale",
   "carbon_credit"
 ];
+
+export const SOURCE_VERIFIER_REGISTRY = {
+  solana: {
+    verifier_id: "source.solana.point_in_time.v1",
+    source: "solana",
+    mode: "point_in_time_chain_read",
+    live_adapter_status: "demo_reference",
+    proves: "Token account, owner, amount, transaction, and slot at a point in time.",
+    does_not_prove: "Continued ownership after the proof slot unless the asset is locked or rechecked.",
+    freshness_rule: "Recheck before any settlement, transfer, retirement, or release action."
+  },
+  dual: {
+    verifier_id: "source.dual.readback.v1",
+    source: "dual",
+    mode: "dual_readback",
+    live_adapter_status: "configured_for_canonical_capsule",
+    proves: "DUAL object/template IDs, state hash, integrity hash, stored capsule fields, and operator-gated write boundary.",
+    does_not_prove: "Native truth of external systems referenced by the capsule.",
+    freshness_rule: "Read back after every DUAL write and before any agent acts on current state."
+  },
+  ipfs: {
+    verifier_id: "source.ipfs.cid_hash.v1",
+    source: "ipfs",
+    mode: "content_addressed_document",
+    live_adapter_status: "demo_reference",
+    proves: "Document bytes match the CID or declared hash when fetched.",
+    does_not_prove: "Legal sufficiency, author identity, or current availability without retrieval.",
+    freshness_rule: "Fetch and hash when document availability is action-critical."
+  },
+  signed_iot_feed: {
+    verifier_id: "source.signed_iot.telemetry.v1",
+    source: "signed_iot_feed",
+    mode: "signed_attestation_ref",
+    live_adapter_status: "adapter_required",
+    proves: "A signed telemetry packet or route observation existed for the stated checkpoint.",
+    does_not_prove: "Route integrity outside the packet window.",
+    freshness_rule: "Require fresh telemetry for each location, condition, or route gate."
+  },
+  customs_attestation: {
+    verifier_id: "source.customs.attestation.v1",
+    source: "customs_attestation",
+    mode: "authority_attestation_ref",
+    live_adapter_status: "adapter_required",
+    proves: "The referenced customs/import status at the verification time.",
+    does_not_prove: "Later inspection changes, holds, or revocations.",
+    freshness_rule: "Recheck before release, delivery, or jurisdictional closeout."
+  },
+  insurance_attestation: {
+    verifier_id: "source.insurance.attestation.v1",
+    source: "insurance_attestation",
+    mode: "authority_attestation_ref",
+    live_adapter_status: "adapter_required",
+    proves: "Coverage or policy status for the referenced window.",
+    does_not_prove: "Future coverage or undisclosed exclusions.",
+    freshness_rule: "Recheck if the action time moves outside the covered window."
+  },
+  escrow_mirror: {
+    verifier_id: "source.escrow.mirror.v1",
+    source: "escrow_mirror",
+    mode: "settlement_mirror_ref",
+    live_adapter_status: "adapter_required",
+    proves: "Reserved, prepared, or mirrored payment state at a point in time.",
+    does_not_prove: "Executed settlement unless the payment rail confirms execution.",
+    freshness_rule: "Recheck immediately before payment release."
+  },
+  policy_admin: {
+    verifier_id: "source.policy_admin.coverage.v1",
+    source: "policy_admin",
+    mode: "policy_system_ref",
+    live_adapter_status: "adapter_required",
+    proves: "Policy boundary and coverage-window reference.",
+    does_not_prove: "Claim acceptance without policy evaluation.",
+    freshness_rule: "Recheck at claim intake and before payout."
+  },
+  enterprise_vault: {
+    verifier_id: "source.enterprise_vault.evidence.v1",
+    source: "enterprise_vault",
+    mode: "vault_document_hash",
+    live_adapter_status: "adapter_required",
+    proves: "A vault-held approval or document matched the referenced hash.",
+    does_not_prove: "Business approval outside the referenced artifact.",
+    freshness_rule: "Re-hash if the vault document can be revised."
+  },
+  signed_tool_log: {
+    verifier_id: "source.signed_tool_log.agent.v1",
+    source: "signed_tool_log",
+    mode: "signed_agent_action_log",
+    live_adapter_status: "adapter_required",
+    proves: "A tool call/action log was signed and bound to the action.",
+    does_not_prove: "Whether the action was authorised without mandate/policy proof.",
+    freshness_rule: "Bind the log to the exact agent action and approval window."
+  },
+  mandate_policy: {
+    verifier_id: "source.mandate_policy.rules.v1",
+    source: "mandate_policy",
+    mode: "versioned_policy_ref",
+    live_adapter_status: "adapter_required",
+    proves: "Budget, threshold, and approval rules at the policy version.",
+    does_not_prove: "Agent identity or counterparty status by itself.",
+    freshness_rule: "Version-pin and re-evaluate whenever the mandate changes."
+  },
+  counterparty_registry: {
+    verifier_id: "source.counterparty_registry.check.v1",
+    source: "counterparty_registry",
+    mode: "registry_snapshot_ref",
+    live_adapter_status: "adapter_required",
+    proves: "Counterparty/category eligibility at the snapshot time.",
+    does_not_prove: "Future sanctions or status changes.",
+    freshness_rule: "Recheck before payment or order placement."
+  },
+  payment_preview: {
+    verifier_id: "source.payment_preview.preview.v1",
+    source: "payment_preview",
+    mode: "non_executing_payment_preview",
+    live_adapter_status: "demo_reference",
+    proves: "Payment preparation metadata, not executed settlement.",
+    does_not_prove: "Money movement.",
+    freshness_rule: "Replace with payment-rail confirmation before settlement claims."
+  },
+  brand_attestation: {
+    verifier_id: "source.brand_attestation.authenticity.v1",
+    source: "brand_attestation",
+    mode: "issuer_attestation_ref",
+    live_adapter_status: "adapter_required",
+    proves: "Issuer/brand attestation over serial, images, or authenticity package.",
+    does_not_prove: "Custody after the attestation.",
+    freshness_rule: "Recheck if custody changes or new damage is reported."
+  },
+  appraisal_attestation: {
+    verifier_id: "source.appraisal.condition.v1",
+    source: "appraisal_attestation",
+    mode: "expert_attestation_ref",
+    live_adapter_status: "adapter_required",
+    proves: "Condition or valuation report at inspection time.",
+    does_not_prove: "Future condition.",
+    freshness_rule: "Reinspect before high-value settlement if the asset leaves custody."
+  },
+  custody_vault: {
+    verifier_id: "source.custody_vault.receipt.v1",
+    source: "custody_vault",
+    mode: "custody_receipt_ref",
+    live_adapter_status: "adapter_required",
+    proves: "Vault intake or custody receipt at the stated checkpoint.",
+    does_not_prove: "Delivery or transfer out unless a new receipt exists.",
+    freshness_rule: "Recheck on every custody handoff."
+  },
+  carbon_registry: {
+    verifier_id: "source.carbon_registry.issuance.v1",
+    source: "carbon_registry",
+    mode: "registry_record_ref",
+    live_adapter_status: "adapter_required",
+    proves: "Credit issuance/registry record at the snapshot time.",
+    does_not_prove: "Retirement, double-spend absence later, or project permanence.",
+    freshness_rule: "Recheck before reserve, transfer, or retirement."
+  },
+  mrv_oracle: {
+    verifier_id: "source.mrv_oracle.packet.v1",
+    source: "mrv_oracle",
+    mode: "mrv_packet_ref",
+    live_adapter_status: "adapter_required",
+    proves: "MRV evidence packet hash and measurement window.",
+    does_not_prove: "Registry issuance without registry proof.",
+    freshness_rule: "Version-pin methodology and measurement period."
+  },
+  verifier_attestation: {
+    verifier_id: "source.verifier_attestation.signature.v1",
+    source: "verifier_attestation",
+    mode: "signed_verifier_attestation",
+    live_adapter_status: "adapter_required",
+    proves: "Verifier signature over the stated facts.",
+    does_not_prove: "Verifier accreditation unless checked separately.",
+    freshness_rule: "Check verifier status before action-critical reliance."
+  },
+  retirement_registry: {
+    verifier_id: "source.retirement_registry.preview.v1",
+    source: "retirement_registry",
+    mode: "retirement_instruction_ref",
+    live_adapter_status: "adapter_required",
+    proves: "Retirement instruction or preview exists.",
+    does_not_prove: "Final retirement unless the registry confirms completion.",
+    freshness_rule: "Require final registry readback for retirement claims."
+  }
+};
+
+const WORKFLOW_DEFINITIONS = {
+  tradeflow_medical_devices: {
+    workflow_id: "workflow.tradeflow.conditional_instrument.v1",
+    title: "Conditional trade instrument lifecycle",
+    subject_type: "shipment_instrument",
+    dual_template: "io.dual.proof_capsule.lifecycle.v1",
+    states: ["Issued", "Mandate verified", "Cargo loaded", "Customs cleared", "Payment releasing", "Closed"],
+    current_transition: "verify_gate",
+    transitions: [
+      { action: "verify_mandate", from_state: "Issued", to_state: "Mandate verified", required_evidence: ["mandate"], policy_gate: "buyer mandate valid" },
+      { action: "verify_loading", from_state: "Mandate verified", to_state: "Cargo loaded", required_evidence: ["ownership", "document", "telemetry"], policy_gate: "cargo and ownership observed" },
+      { action: "verify_gate", from_state: "Cargo loaded", to_state: "Customs cleared", from_gate: "Cargo loaded", to_gate: "Customs cleared", required_evidence: ["ownership", "document", "telemetry", "compliance", "insurance", "settlement", "mandate"], policy_gate: "customs and release conditions valid" },
+      { action: "release_payment", from_state: "Customs cleared", to_state: "Payment releasing", required_evidence: ["settlement", "mandate", "insurance"], policy_gate: "release threshold and review state valid" },
+      { action: "close_instrument", from_state: "Payment releasing", to_state: "Closed", required_evidence: ["settlement", "mandate"], policy_gate: "remaining amount is zero" }
+    ]
+  },
+  insurance_claim: {
+    workflow_id: "workflow.insurance.agent_claim.v1",
+    title: "Agent insurance claim evidence lifecycle",
+    subject_type: "claim",
+    dual_template: "io.dual.proof_capsule.lifecycle.v1",
+    states: ["Submitted", "Evidence ready", "Underwriter review", "Approved", "Closed"],
+    current_transition: "verify_claim_evidence",
+    transitions: [
+      { action: "verify_claim_evidence", from_state: "Submitted", to_state: "Evidence ready", required_evidence: ["coverage", "approval", "tool_use", "report", "mandate"], policy_gate: "coverage, approval, and mandate evidence complete" },
+      { action: "underwriter_review", from_state: "Evidence ready", to_state: "Underwriter review", required_evidence: ["coverage", "report"], policy_gate: "review packet complete" },
+      { action: "approve_claim", from_state: "Underwriter review", to_state: "Approved", required_evidence: ["coverage", "approval", "report"], policy_gate: "claim policy matched" }
+    ]
+  },
+  agent_mandate_purchase: {
+    workflow_id: "workflow.agent_mandate.purchase.v1",
+    title: "Buyer-controlled agent purchase mandate lifecycle",
+    subject_type: "agent_action",
+    dual_template: "io.dual.proof_capsule.lifecycle.v1",
+    states: ["Requested", "Policy evaluated", "Authorised", "Payment prepared", "Closed"],
+    current_transition: "evaluate_agent_purchase",
+    transitions: [
+      { action: "evaluate_agent_purchase", from_state: "Requested", to_state: "Authorised", required_evidence: ["identity", "budget", "counterparty", "approval", "settlement"], policy_gate: "agent, budget, merchant, and preview are inside mandate" },
+      { action: "prepare_payment", from_state: "Authorised", to_state: "Payment prepared", required_evidence: ["settlement", "approval"], policy_gate: "payment preview remains non-executing" }
+    ]
+  },
+  luxury_resale: {
+    workflow_id: "workflow.luxury.resale.v1",
+    title: "Tokenized luxury resale lifecycle",
+    subject_type: "physical_asset",
+    dual_template: "io.dual.proof_capsule.lifecycle.v1",
+    states: ["Listed", "Inspection pending", "Escrow ready", "Transferred", "Closed"],
+    current_transition: "verify_resale_acceptance",
+    transitions: [
+      { action: "verify_resale_acceptance", from_state: "Inspection pending", to_state: "Escrow ready", required_evidence: ["ownership", "authenticity", "condition", "custody", "settlement", "mandate"], policy_gate: "ownership, authenticity, custody, and escrow evidence complete" },
+      { action: "transfer_title", from_state: "Escrow ready", to_state: "Transferred", required_evidence: ["ownership", "custody", "settlement"], policy_gate: "fresh ownership and escrow release verified" }
+    ]
+  },
+  carbon_credit: {
+    workflow_id: "workflow.carbon.credit_retirement.v1",
+    title: "Tokenized carbon credit retirement lifecycle",
+    subject_type: "carbon_credit",
+    dual_template: "io.dual.proof_capsule.lifecycle.v1",
+    states: ["Issued", "MRV verified", "Reserved", "Retirement prepared", "Retired"],
+    current_transition: "verify_offset_capsule",
+    transitions: [
+      { action: "verify_offset_capsule", from_state: "Offset review pending", to_state: "Retirement prepared", required_evidence: ["issuance", "mrv", "verification", "ownership", "retirement", "mandate"], policy_gate: "issuance, MRV, holder, and retirement preview complete" },
+      { action: "retire_credit", from_state: "Retirement prepared", to_state: "Retired", required_evidence: ["ownership", "retirement", "verification"], policy_gate: "final registry readback confirms retirement" }
+    ]
+  }
+};
 
 const TRADEFLOW_DUAL_REFERENCE = {
   mode: "readback_reference",
@@ -394,6 +644,15 @@ export function demoCapsuleInput(scenario = "tradeflow_medical_devices") {
         review_required: false,
         release_usd: 0,
         remaining_usd: 0
+      },
+      state_transition: {
+        action: "verify_claim_evidence",
+        actor: "underwriter-agent.insurance.au",
+        from_state: "Submitted",
+        to_state: "Evidence ready",
+        from_gate: "Claim intake",
+        to_gate: "Evidence ready",
+        occurred_at: GENERATED_AT
       }
     };
   }
@@ -521,6 +780,15 @@ export function demoCapsuleInput(scenario = "tradeflow_medical_devices") {
         review_required: false,
         release_usd: 6200,
         remaining_usd: 0
+      },
+      state_transition: {
+        action: "evaluate_agent_purchase",
+        actor: "buyer-agent.travel.au",
+        from_state: "Requested",
+        to_state: "Authorised",
+        from_gate: "Policy evaluation",
+        to_gate: "Authorised purchase",
+        occurred_at: GENERATED_AT
       }
     };
   }
@@ -1132,6 +1400,166 @@ export function redTeamCapsule(input = {}) {
   };
 }
 
+export function listWorkflowTemplates() {
+  return {
+    ok: true,
+    template: "io.dual.proof_capsule.lifecycle.v1",
+    model: "template + object + event-bus state machine",
+    workflow_count: Object.keys(WORKFLOW_DEFINITIONS).length,
+    workflows: Object.entries(WORKFLOW_DEFINITIONS).map(([scenario, workflow]) => ({
+      scenario,
+      workflow_id: workflow.workflow_id,
+      title: workflow.title,
+      subject_type: workflow.subject_type,
+      state_count: workflow.states.length,
+      transition_count: workflow.transitions.length,
+      current_transition: workflow.current_transition
+    })),
+    reusable_contract: {
+      subject: "The asset, action, right, claim, shipment, or workflow being verified.",
+      claims: "Statements the transition relies on.",
+      evidence_refs: "Hashes, CIDs, slots, signed attestation IDs, vault refs, and readback references.",
+      policy_gate: "Versioned rules that decide whether the transition can move forward.",
+      decision: "Approved, approved with review, needs evidence, blocked, or closed.",
+      state_transition: "From state, to state, actor, action, and proof time.",
+      dual_anchor: "DUAL object/template/state/integrity links and readback proof."
+    }
+  };
+}
+
+export function listSourceVerifiers() {
+  const verifiers = Object.values(SOURCE_VERIFIER_REGISTRY);
+  return {
+    ok: true,
+    verifier_count: verifiers.length,
+    source_boundary: "Source systems prove their native facts at a point in time. DUAL anchors the policy-bound decision and state transition around those facts.",
+    verifiers,
+    adapter_statuses: {
+      configured_for_canonical_capsule: "Live DUAL readback is configured for the canonical Proof Capsule object.",
+      demo_reference: "The demo carries a structured ref/hash/slot; a production adapter should query the source.",
+      adapter_required: "A production verifier must connect to the source system before action-critical reliance."
+    }
+  };
+}
+
+export function getWorkflowDefinition(input = {}) {
+  const scenario = normalizeScenario(input.scenario || scenarioFromCapsule(input.capsule));
+  const workflow = structuredClone(WORKFLOW_DEFINITIONS[scenario] || WORKFLOW_DEFINITIONS.tradeflow_medical_devices);
+  const requiredSources = new Set();
+  const requiredEvidence = new Set();
+  for (const transition of workflow.transitions) {
+    for (const type of transition.required_evidence || []) requiredEvidence.add(type);
+  }
+  const seed = demoCapsuleInput(scenario);
+  for (const ref of seed.evidence_refs || []) requiredSources.add(ref.source);
+  const sourceVerifierCoverage = Array.from(requiredSources).sort().map((source) => ({
+    source,
+    verifier_id: SOURCE_VERIFIER_REGISTRY[source]?.verifier_id || "missing",
+    mode: SOURCE_VERIFIER_REGISTRY[source]?.mode || "not_registered",
+    live_adapter_status: SOURCE_VERIFIER_REGISTRY[source]?.live_adapter_status || "missing"
+  }));
+
+  return {
+    ok: true,
+    scenario,
+    ...workflow,
+    required_evidence_types: Array.from(requiredEvidence).sort(),
+    source_verifier_coverage: sourceVerifierCoverage,
+    workflow_hash: hashValue({
+      scenario,
+      workflow_id: workflow.workflow_id,
+      states: workflow.states,
+      transitions: workflow.transitions,
+      source_verifier_coverage: sourceVerifierCoverage
+    }),
+    dual_build_contract: {
+      template: workflow.dual_template,
+      object: "one DUAL object per workflow instance",
+      write_path: "event_bus",
+      write_execution: "operator_gated",
+      public_writes: false,
+      readback_required_after_write: true
+    }
+  };
+}
+
+export function replayWorkflowCapsule(input = {}) {
+  const capsule = input.capsule?.schema_version ? input.capsule : composeProofCapsule(input);
+  const scenario = normalizeScenario(input.scenario || scenarioFromCapsule(capsule));
+  const workflow = getWorkflowDefinition({ scenario });
+  const transition = findWorkflowTransition(workflow, capsule.state_transition);
+  const requiredEvidence = transition?.required_evidence || capsule.policy?.required_anchor_types || [];
+  const evidenceTypes = new Set((capsule.evidence_refs || []).map((ref) => ref.type));
+  const missingEvidence = requiredEvidence.filter((type) => !evidenceTypes.has(type));
+  const unsupportedSources = (capsule.evidence_refs || [])
+    .filter((ref) => !SOURCE_VERIFIER_REGISTRY[ref.source])
+    .map((ref) => ({ evidence_id: ref.evidence_id, source: ref.source }));
+  const verification = verifyProofCapsule({ capsule });
+  const policy = evaluateCapsulePolicy({ capsule });
+  const pointInTimeRefs = (capsule.evidence_refs || [])
+    .filter((ref) => ref.point_in_time || pointInTimeSource(ref.source))
+    .map((ref) => ({
+      evidence_id: ref.evidence_id,
+      type: ref.type,
+      source: ref.source,
+      point_in_time: ref.point_in_time || "attestation_time",
+      recheck_rule: SOURCE_VERIFIER_REGISTRY[ref.source]?.freshness_rule || "Recheck before action-critical reliance."
+    }));
+  const replaySteps = [
+    step("read_workflow_definition", workflow.ok, workflow.workflow_id),
+    step("match_state_transition", Boolean(transition), transition?.action || "no matching transition"),
+    step("check_required_evidence", missingEvidence.length === 0, missingEvidence.length ? `missing ${missingEvidence.join(", ")}` : "all required evidence present"),
+    step("check_source_verifiers", unsupportedSources.length === 0, unsupportedSources.length ? `unsupported ${unsupportedSources.map((item) => item.source).join(", ")}` : "all sources registered"),
+    step("evaluate_policy", policy.result !== "Blocked", `${policy.result} / ${policy.code}`),
+    step("rederive_capsule_hashes", verification.ok, verification.verification_level),
+    step("confirm_dual_write_boundary", capsule.write_boundary?.public_writes === false, capsule.write_boundary?.write_execution || "read-only")
+  ];
+  const ok = replaySteps.every((item) => item.pass);
+
+  return {
+    ok,
+    scenario,
+    workflow_id: workflow.workflow_id,
+    workflow_title: workflow.title,
+    subject_id: capsule.subject?.subject_id,
+    capsule_id: capsule.capsule_id,
+    transition_allowed: Boolean(transition),
+    matched_transition: transition || null,
+    current_state: capsule.state_transition?.from_state || capsule.subject?.state || null,
+    next_state: capsule.state_transition?.to_state || null,
+    state_timeline: timelineForWorkflow(workflow, capsule.state_transition),
+    replay_steps: replaySteps,
+    missing_required_evidence: missingEvidence,
+    unsupported_sources: unsupportedSources,
+    point_in_time_rechecks: pointInTimeRefs,
+    source_verifier_summary: summarizeSourceVerifiers(capsule),
+    policy_result: {
+      result: policy.result,
+      code: policy.code,
+      reason: policy.reason
+    },
+    hash_replay: {
+      state_transition_hash: deriveHashes(capsule).state_transition_hash,
+      evidence_hash: deriveHashes(capsule).evidence_hash,
+      workflow_replay_hash: hashValue({
+        workflow_id: workflow.workflow_id,
+        capsule_id: capsule.capsule_id,
+        state_transition: capsule.state_transition,
+        required_evidence: requiredEvidence,
+        evidence_hash: capsule.hashes?.evidence_hash,
+        decision_content_hash: capsule.hashes?.decision_content_hash,
+        policy_result: policy.result
+      })
+    },
+    dual_lifecycle_model: workflow.dual_build_contract,
+    caveats: [
+      "This replay verifies workflow shape, evidence refs, policy result, hashes, and write boundary.",
+      "External source facts are point-in-time unless a production adapter re-queries them.",
+      "DUAL readback proves the capsule envelope/state; source systems remain source of truth for native facts."
+    ]
+  };
+}
+
 export function serviceDescriptor() {
   return {
     ok: true,
@@ -1152,20 +1580,27 @@ export function serviceDescriptor() {
       "verify_proof_capsule",
       "evaluate_capsule_policy",
       "red_team_capsule",
-      "get_capsule_handoff"
+      "get_capsule_handoff",
+      "list_workflow_templates",
+      "get_workflow_definition",
+      "replay_workflow_capsule",
+      "list_source_verifiers"
     ],
     resources: [
       "capsule://manifest",
       "capsule://schema",
       "capsule://policy/default",
       "capsule://demo/tradeflow-medical-devices",
-      "capsule://scorecard"
+      "capsule://scorecard",
+      "capsule://workflows",
+      "capsule://source-verifiers"
     ],
-    resourceTemplates: ["capsule://demo/{scenario}"],
+    resourceTemplates: ["capsule://demo/{scenario}", "capsule://workflow/{scenario}"],
     prompts: [
       "proof_capsule_review",
       "mcp_client_handoff",
-      "red_team_capsule_boundary"
+      "red_team_capsule_boundary",
+      "design_proof_capsule_workflow"
     ],
     supported_capsule_types: CAPSULE_TYPES,
     supported_scenarios: SCENARIOS,
@@ -1249,4 +1684,78 @@ function reasonForPolicyResult({ result, missing, unsupportedSources, overMax, r
 
 function check(name, pass) {
   return { name, pass: Boolean(pass) };
+}
+
+function step(name, pass, detail) {
+  return { name, pass: Boolean(pass), detail };
+}
+
+function normalizeScenario(scenario) {
+  return SCENARIOS.includes(scenario) ? scenario : "tradeflow_medical_devices";
+}
+
+function scenarioFromCapsule(capsule = {}) {
+  const id = capsule.capsule_id || "";
+  if (id.includes("INSURANCE")) return "insurance_claim";
+  if (id.includes("AGENT-MANDATE")) return "agent_mandate_purchase";
+  if (id.includes("LUXURY")) return "luxury_resale";
+  if (id.includes("CARBON")) return "carbon_credit";
+  return "tradeflow_medical_devices";
+}
+
+function findWorkflowTransition(workflow, stateTransition = {}) {
+  return (workflow.transitions || []).find((transition) => (
+    transition.action === stateTransition.action
+    || (
+      transition.from_state === stateTransition.from_state
+      && transition.to_state === stateTransition.to_state
+    )
+    || (
+      transition.from_gate
+      && transition.to_gate
+      && transition.from_gate === stateTransition.from_gate
+      && transition.to_gate === stateTransition.to_gate
+    )
+  ));
+}
+
+function timelineForWorkflow(workflow, stateTransition = {}) {
+  const toState = stateTransition.to_state;
+  const fromState = stateTransition.from_state;
+  const toGate = stateTransition.to_gate;
+  return (workflow.states || []).map((state, index) => {
+    const isCurrent = state === toState || state === toGate;
+    const wasPrevious = state === fromState || state === stateTransition.from_gate;
+    return {
+      state,
+      index,
+      status: isCurrent
+        ? "current"
+        : wasPrevious
+          ? "previous"
+          : index < (workflow.states || []).findIndex((item) => item === toState || item === toGate)
+            ? "completed"
+            : "pending"
+    };
+  });
+}
+
+function pointInTimeSource(source) {
+  return ["solana", "signed_iot_feed", "customs_attestation", "insurance_attestation", "escrow_mirror", "carbon_registry", "mrv_oracle", "custody_vault"].includes(source);
+}
+
+function summarizeSourceVerifiers(capsule) {
+  return (capsule.evidence_refs || []).map((ref) => {
+    const verifier = SOURCE_VERIFIER_REGISTRY[ref.source];
+    return {
+      evidence_id: ref.evidence_id,
+      type: ref.type,
+      source: ref.source,
+      verifier_id: verifier?.verifier_id || "missing",
+      mode: verifier?.mode || "not_registered",
+      live_adapter_status: verifier?.live_adapter_status || "missing",
+      proves: verifier?.proves || "No verifier contract registered.",
+      freshness_rule: verifier?.freshness_rule || "Register a verifier before relying on this source."
+    };
+  });
 }
