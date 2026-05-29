@@ -5,6 +5,8 @@ let lastTransitionPlan = null;
 let compareBase = null;
 let lastProofRun = null;
 let publicMode = false;
+let reviewerMode = false;
+let reviewerStepIndex = 0;
 
 const $ = (id) => document.getElementById(id);
 
@@ -35,7 +37,7 @@ function formatUsd(value) {
 }
 
 function short(value) {
-  return String(value || "").replace(/^sha256:/, "").slice(0, 16);
+  return String(value || "").replace(/^sha256:/, "").slice(0, 12);
 }
 
 function clone(value) {
@@ -56,6 +58,69 @@ function scenario() {
   return $("scenarioSelect").value;
 }
 
+const reviewerSteps = [
+  {
+    id: "scenario",
+    targetId: "scenarioPanel",
+    title: "Choose a proof workflow",
+    body: "Start with one of the five demo workflows. Each one composes a different proof capsule shape while keeping the same DUAL verifier boundary.",
+    facts: () => [
+      ["Scenario", $("scenarioLabel")?.textContent || "Loading"],
+      ["MCP", "24 tools"],
+      ["Public writes", "false"],
+      ["Mode", liveStatus?.mode || "checking"]
+    ]
+  },
+  {
+    id: "capsule",
+    targetId: "capsulePanel",
+    title: "Inspect the capsule",
+    body: "The center panel shows the subject, decision, evidence references, state transition, workflow replay, and source verifier contracts.",
+    facts: () => [
+      ["Capsule", currentCapsule?.capsule_id || "Loading"],
+      ["Decision", currentCapsule?.decision?.result || "-"],
+      ["Evidence", String(currentCapsule?.evidence_refs?.length || 0)],
+      ["State", currentCapsule?.state_transition?.to_state || "-"]
+    ]
+  },
+  {
+    id: "proof-run",
+    targetId: "proofRunPanel",
+    title: "Run the public proof",
+    body: "The proof run compresses hashes, policy decision, source checks, DUAL anchors, timeline, diagnosis, and safe next action into one reviewer packet.",
+    facts: () => [
+      ["Status", lastProofRun?.status || "Not run"],
+      ["Score", lastProofRun?.proof_score?.score ? `${lastProofRun.proof_score.score}/100` : "-"],
+      ["Link", lastProofRun?.link_integrity?.status || "not checked"],
+      ["Boundary", lastProofRun?.write_boundary?.write_execution || "public verify"]
+    ]
+  },
+  {
+    id: "proof-rail",
+    targetId: "proofRailPanel",
+    title: "Check DUAL anchors",
+    body: "The proof rail shows DUAL readiness, replay status, timeline, hashes, and explorer links while keeping writes operator-gated.",
+    facts: () => [
+      ["DUAL", liveStatus?.readbackReady ? "live" : "fallback"],
+      ["Object", short(liveStatus?.objectId || currentCapsule?.dual_anchor?.object_id)],
+      ["Writes", liveStatus?.liveDualWrites ? "operator gated" : "not configured"],
+      ["Public", String(Boolean(liveStatus?.publicWrites))]
+    ]
+  },
+  {
+    id: "support",
+    targetId: "supportPanel",
+    title: "Reviewer support",
+    body: "The support rail gives the reviewer a fixed route through the demo and keeps the safety boundary visible throughout the walkthrough.",
+    facts: () => [
+      ["Run proof", lastProofRun ? "complete" : "pending"],
+      ["Verifier", lastProofRun?.public_url ? "ready" : "pending"],
+      ["Red-team", "live_write_blocked"],
+      ["Gate", "operator token"]
+    ]
+  }
+];
+
 function capsuleInput(overrides = {}) {
   return {
     capsule_id: currentCapsule?.capsule_id,
@@ -71,6 +136,100 @@ function capsuleInput(overrides = {}) {
     write_boundary: currentCapsule?.write_boundary,
     ...overrides
   };
+}
+
+function renderHeaderContext() {
+  $("headerMode").textContent = liveStatus?.readbackReady ? "DUAL live" : liveStatus?.mode || "Local proof";
+  $("headerCapsuleId").textContent = currentCapsule?.capsule_id || "Loading";
+  $("headerObjectId").textContent = liveStatus?.objectId || currentCapsule?.dual_anchor?.object_id || "Pending";
+}
+
+function renderSupportGuide() {
+  const proofReady = Boolean(lastProofRun);
+  const publicReady = Boolean(lastProofRun?.public_url || currentCapsule?.capsule_id);
+  const dualReady = Boolean(liveStatus?.readbackReady || currentCapsule?.dual_anchor?.object_id);
+  const writeSafe = liveStatus?.publicWrites === false;
+  const checks = [
+    {
+      label: "Run proof bundle",
+      detail: proofReady ? `${lastProofRun?.proof_score?.score ?? "-"} proof score, ${lastProofRun?.status || "ready"}` : "Use Run proof to create the reviewer packet.",
+      ok: proofReady
+    },
+    {
+      label: "Open public verifier",
+      detail: publicReady ? "Shareable /proof route is available for this capsule." : "Compose a capsule first.",
+      ok: publicReady
+    },
+    {
+      label: "Check DUAL anchors",
+      detail: dualReady ? "DUAL object/template references and proof links are visible in the rail." : "Live readback is not yet visible.",
+      ok: dualReady
+    },
+    {
+      label: "Confirm write boundary",
+      detail: writeSafe ? "Public writes are false; live writes remain operator-gated." : "Write boundary needs review.",
+      ok: writeSafe
+    }
+  ];
+  $("supportStatus").textContent = checks.every((check) => check.ok) ? "Reviewer ready" : "Needs proof run";
+  $("supportChecklist").innerHTML = checks.map((check) => `
+    <div class="support-check ${check.ok ? "" : "warn"}">
+      <strong>${escapeHtml(check.label)}</strong>
+      <span>${escapeHtml(check.detail)}</span>
+    </div>
+  `).join("");
+  $("demoScript").innerHTML = [
+    ["1", "Run proof", "Creates a content-addressed verifier bundle and public proof URL."],
+    ["2", "Open verifier", "Shows the tamper-evident public proof view with operator controls hidden."],
+    ["3", "Red-team gate", "Demonstrates that public callers can verify or refuse but cannot write to DUAL."]
+  ].map(([step, title, detail]) => `
+    <div>
+      <strong>${escapeHtml(step)}. ${escapeHtml(title)}</strong>
+      <span>${escapeHtml(detail)}</span>
+    </div>
+  `).join("");
+}
+
+function renderReviewerGuide() {
+  const guide = $("reviewerGuide");
+  document.querySelectorAll(".review-focus").forEach((element) => element.classList.remove("review-focus"));
+
+  if (!reviewerMode || publicMode) {
+    guide.hidden = true;
+    $("reviewerModeBtn").classList.remove("active");
+    return;
+  }
+
+  const step = reviewerSteps[reviewerStepIndex] || reviewerSteps[0];
+  const target = $(step.targetId);
+  if (target) target.classList.add("review-focus");
+
+  guide.hidden = false;
+  $("reviewerModeBtn").classList.add("active");
+  $("reviewerEyebrow").textContent = `Step ${reviewerStepIndex + 1} of ${reviewerSteps.length}`;
+  $("reviewerTitle").textContent = step.title;
+  $("reviewerBody").textContent = step.body;
+  $("reviewerFacts").innerHTML = step.facts().map(([label, value]) => `
+    <div>
+      <dt>${escapeHtml(label)}</dt>
+      <dd>${escapeHtml(value)}</dd>
+    </div>
+  `).join("");
+  $("reviewerProgress").style.setProperty("--progress", `${((reviewerStepIndex + 1) / reviewerSteps.length) * 100}%`);
+  $("reviewerPrevBtn").disabled = reviewerStepIndex === 0;
+  $("reviewerNextBtn").textContent = reviewerStepIndex === reviewerSteps.length - 1 ? "Finish" : "Next";
+}
+
+function scrollReviewerTarget() {
+  const step = reviewerSteps[reviewerStepIndex] || reviewerSteps[0];
+  const target = $(step.targetId);
+  if (target) target.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+}
+
+function refreshReviewChrome() {
+  renderHeaderContext();
+  renderSupportGuide();
+  renderReviewerGuide();
 }
 
 async function recompose(overrides = {}, title = "Updated Proof Capsule JSON") {
@@ -135,6 +294,7 @@ function renderCapsule(capsule, outputTitle = "Current capsule JSON") {
 
   $("outputTitle").textContent = outputTitle;
   $("output").textContent = JSON.stringify(capsule, null, 2);
+  refreshReviewChrome();
 }
 
 function renderWorkflow(definition, replay = null) {
@@ -336,6 +496,7 @@ function renderProofRun(payload, outputTitle = "Proof run") {
 
   $("outputTitle").textContent = outputTitle;
   $("output").textContent = JSON.stringify(payload, null, 2);
+  refreshReviewChrome();
 }
 
 function renderPublicVerifierBanner(payload) {
@@ -374,6 +535,7 @@ function renderStatus(status) {
       <span>${escapeHtml(value)}</span>
     </div>
   `).join("");
+  refreshReviewChrome();
 }
 
 async function loadStatus() {
@@ -524,6 +686,40 @@ function openProofPage() {
   if (!currentCapsule?.capsule_id) return;
   const url = `/proof/${encodeURIComponent(currentCapsule.capsule_id)}?scenario=${encodeURIComponent(scenario())}&content_hash=${encodeURIComponent(short(currentCapsule.hashes?.capsule_content_hash))}`;
   window.location.assign(url);
+}
+
+async function ensureProofThenOpen() {
+  if (!lastProofRun) await runProof();
+  openProofPage();
+}
+
+async function toggleReviewerMode() {
+  reviewerMode = !reviewerMode;
+  if (reviewerMode) reviewerStepIndex = 0;
+  renderReviewerGuide();
+  if (reviewerMode) scrollReviewerTarget();
+}
+
+function advanceReviewerStep() {
+  if (reviewerStepIndex >= reviewerSteps.length - 1) {
+    reviewerMode = false;
+    renderReviewerGuide();
+    return;
+  }
+  reviewerStepIndex += 1;
+  renderReviewerGuide();
+  scrollReviewerTarget();
+}
+
+function retreatReviewerStep() {
+  reviewerStepIndex = Math.max(0, reviewerStepIndex - 1);
+  renderReviewerGuide();
+  scrollReviewerTarget();
+}
+
+function closeReviewerMode() {
+  reviewerMode = false;
+  renderReviewerGuide();
 }
 
 async function attachEvidence() {
@@ -723,6 +919,15 @@ $("verifyBtn").addEventListener("click", () => verify().catch(showError));
 $("runProofBtn").addEventListener("click", () => runProof().catch(showError));
 $("openProofBtn").addEventListener("click", () => openProofPage());
 $("redTeamBtn").addEventListener("click", () => redTeam().catch(showError));
+$("topRunProofBtn").addEventListener("click", () => runProof().catch(showError));
+$("topOpenProofBtn").addEventListener("click", () => ensureProofThenOpen().catch(showError));
+$("reviewerModeBtn").addEventListener("click", () => toggleReviewerMode().catch(showError));
+$("walkRunProofBtn").addEventListener("click", () => runProof().catch(showError));
+$("walkOpenProofBtn").addEventListener("click", () => ensureProofThenOpen().catch(showError));
+$("walkRedTeamBtn").addEventListener("click", () => redTeam().catch(showError));
+$("reviewerPrevBtn").addEventListener("click", retreatReviewerStep);
+$("reviewerNextBtn").addEventListener("click", advanceReviewerStep);
+$("reviewerCloseBtn").addEventListener("click", closeReviewerMode);
 $("syncBtn").addEventListener("click", () => syncLive().catch(showError));
 $("mintBtn").addEventListener("click", () => mintLive().catch(showError));
 $("attachEvidenceBtn").addEventListener("click", () => attachEvidence().catch(showError));

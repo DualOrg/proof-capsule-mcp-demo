@@ -4,7 +4,7 @@ Proof Capsule is the use-case-agnostic DUAL primitive behind TradeFlow-style pro
 
 This sandbox exposes that primitive through a Streamable HTTP MCP endpoint and a small UI. In production it can read from a live DUAL object and execute operator-gated event-bus mint/sync writes.
 
-The v0.5.2 model adds the public proof layer on top of the operator workflow: one-click proof runs, shareable verifier pages under `/proof/...`, public DUAL/block-explorer links, link-integrity checks, proof-readiness scoring, and MCP tools/resources/prompts for publishing a verifier-ready proof page. Live writes remain operator-gated.
+The v0.5.3 model adds a TradeFlow-benchmark control-desk UI on top of the public proof layer: DUAL-branded operational header, explicit demo disclosure, 60-90 second reviewer path, first-screen proof actions, reviewer support rail, guided reviewer mode, public DUAL/block-explorer links, link-integrity checks, proof-readiness scoring, and MCP tools/resources/prompts for publishing a verifier-ready proof page. Live writes remain operator-gated.
 
 ## Scope
 
@@ -38,6 +38,16 @@ Run the public proof flow from the UI:
 Open http://127.0.0.1:4184
 Click Run proof
 Click Open public page
+```
+
+Run the benchmark-style reviewer path:
+
+```text
+Open http://127.0.0.1:4184
+Click Reviewer mode
+Click Run proof
+Inspect the proof rail and reviewer support checklist
+Open the public verifier
 ```
 
 The public verifier route is also directly addressable:

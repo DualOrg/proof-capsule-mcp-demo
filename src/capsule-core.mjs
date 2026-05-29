@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const SERVICE_NAME = "dual-proof-capsule-mcp";
-export const SERVICE_VERSION = "0.5.2";
+export const SERVICE_VERSION = "0.5.3";
 export const CAPSULE_SCHEMA_VERSION = "proof-capsule.v0.1";
 export const CUSTOM_WORKFLOW_SCHEMA_VERSION = "proof-capsule-workflow-draft.v0.1";
 export const GENERATED_AT = "2026-05-29T00:00:00.000Z";
@@ -2383,8 +2383,8 @@ export function scorecard() {
   return {
     ok: true,
     score_target: 9.8,
-    score_claim: "v0.5.2_pending_cowork_revalidation",
-    scoring_note: "The v0.5.2 public verifier layer may only claim 9.8 after local/prod proof scripts pass and Claude Cowork independently agrees.",
+    score_claim: "v0.5.3_pending_cowork_revalidation",
+    scoring_note: "The v0.5.3 benchmark UI/support layer may only claim 9.8 after local/prod proof scripts pass and Claude Cowork independently agrees.",
     criteria: [
       { area: "MCP ergonomics", required: "Manifest, schema, resources, templates, prompts, read-only annotations, structured outputs." },
       { area: "Proof semantics", required: "Stable content hashes split from fresh envelope hashes; per-hash re-derivation." },

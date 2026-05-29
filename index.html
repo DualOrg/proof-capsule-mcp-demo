@@ -3,28 +3,76 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Proof Capsule Studio</title>
-    <link rel="stylesheet" href="/styles.css?v=0.5.2">
+    <title>Proof Capsule Control Desk</title>
+    <link rel="stylesheet" href="/styles.css?v=0.5.3-benchmark5">
   </head>
   <body>
     <header class="topbar">
-      <div>
-        <p class="eyebrow">DUAL primitive</p>
-        <h1>Proof Capsule Studio</h1>
+      <div class="brand-block">
+        <a class="brand-logo" href="/" aria-label="DUAL Proof Capsule">
+          <img src="/assets/dual-logo.svg" alt="DUAL">
+        </a>
+        <div class="brand-copy">
+          <h1>Proof Capsule Control Desk</h1>
+          <p>Use-case agnostic proof envelopes with DUAL-anchored verifier state.</p>
+        </div>
+      </div>
+      <div class="header-meta" aria-label="Current proof context">
+        <div>
+          <span>Mode</span>
+          <strong id="headerMode">Checking DUAL</strong>
+        </div>
+        <div>
+          <span>Capsule</span>
+          <strong id="headerCapsuleId">Loading</strong>
+        </div>
+        <div>
+          <span>DUAL object</span>
+          <strong id="headerObjectId">Pending</strong>
+        </div>
       </div>
       <div class="top-actions">
         <span class="status-pill" id="mcpStatus">MCP ready</span>
         <span class="status-pill" id="dualStatus">DUAL checking</span>
         <span class="status-pill safe" id="writeStatus">Public writes off</span>
+        <button class="agent-btn" id="reviewerModeBtn" type="button" title="Start reviewer walkthrough">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="M3 6h.01" /><path d="M3 12h.01" /><path d="M3 18h.01" /></svg>
+          Reviewer mode
+        </button>
+        <button class="secondary-btn" id="topRunProofBtn" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 9.4 17 19 7" /></svg>
+          Run proof
+        </button>
+        <button class="primary-btn" id="topOpenProofBtn" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7" /><path d="M9 7h8v8" /></svg>
+          Public verifier
+        </button>
       </div>
     </header>
 
     <main class="shell">
+      <section class="demo-disclosure" aria-label="Demo disclosure">
+        <strong>Synthetic workflows, live DUAL proof boundary.</strong>
+        <span>Scenario data is demo content. DUAL readback, verifier hashes, public proof links, and operator-gated write boundaries are exercised by the app and MCP surface.</span>
+      </section>
+
+      <section class="walkthrough-band" aria-label="Reviewer walkthrough">
+        <div>
+          <strong>60-90 second reviewer path</strong>
+          <span>Run a proof, inspect source checks and DUAL anchors, open the public verifier, then confirm tamper-evident link behaviour and blocked public writes.</span>
+        </div>
+        <div class="walkthrough-actions">
+          <button id="walkRunProofBtn" type="button">1. Run proof</button>
+          <button id="walkOpenProofBtn" type="button">2. Open verifier</button>
+          <button id="walkRedTeamBtn" type="button">3. Red-team gate</button>
+        </div>
+      </section>
+
       <section class="intro">
         <div>
-          <p class="eyebrow">Use-case agnostic proof envelope</p>
+          <p class="eyebrow">Proof capsule primitive</p>
           <h2>Bind external tokenised data into one verifier-ready DUAL capsule.</h2>
-          <p class="lede">This demo composes ownership, documents, telemetry, compliance, insurance, settlement, mandate, and DUAL anchor references into deterministic hashes that an MCP client can re-derive.</p>
+          <p class="lede">Composes ownership, documents, telemetry, compliance, settlement, mandate, and DUAL anchor references into deterministic hashes that humans and MCP clients can re-derive.</p>
         </div>
         <div class="boundary">
           <span>Boundary</span>
@@ -70,7 +118,7 @@
       </section>
 
       <section class="workspace">
-        <aside class="panel controls">
+        <aside class="panel controls" id="scenarioPanel">
           <div class="panel-title">
             <span>Scenario</span>
             <strong id="scenarioLabel">TradeFlow medical devices</strong>
@@ -119,7 +167,7 @@
           </div>
         </aside>
 
-        <section class="panel capsule">
+        <section class="panel capsule" id="capsulePanel">
           <div class="panel-title">
             <span>Capsule</span>
             <strong id="capsuleId">Loading</strong>
@@ -252,12 +300,20 @@
           </div>
         </section>
 
-        <aside class="panel proof">
+        <aside class="panel proof" id="proofRailPanel">
           <div class="panel-title">
             <span>Verifier</span>
             <strong id="verifyStatus">Pending</strong>
           </div>
           <div class="dual-readiness" id="dualReadiness"></div>
+          <section class="support-panel" id="supportPanel">
+            <div class="panel-title compact-title">
+              <span>Reviewer support</span>
+              <strong id="supportStatus">Ready path</strong>
+            </div>
+            <div class="support-checklist" id="supportChecklist"></div>
+            <div class="demo-script" id="demoScript"></div>
+          </section>
           <div class="replay-card">
             <span>Workflow replay</span>
             <strong id="replayStatus">Pending</strong>
@@ -294,8 +350,25 @@
         </div>
         <pre id="output">{}</pre>
       </section>
+
+      <section class="reviewer-guide" id="reviewerGuide" aria-live="polite" hidden>
+        <div class="reviewer-progress" id="reviewerProgress"></div>
+        <div>
+          <span id="reviewerEyebrow">Reviewer mode</span>
+          <h2 id="reviewerTitle">Proof Capsule walkthrough</h2>
+          <p id="reviewerBody">Follow the proof path from scenario to public verifier.</p>
+          <dl class="reviewer-facts" id="reviewerFacts"></dl>
+        </div>
+        <div class="reviewer-actions">
+          <button class="secondary-btn" id="reviewerPrevBtn" type="button">Back</button>
+          <button class="primary-btn" id="reviewerNextBtn" type="button">Next</button>
+          <button class="icon-btn" id="reviewerCloseBtn" type="button" title="Close reviewer mode" aria-label="Close reviewer mode">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+          </button>
+        </div>
+      </section>
     </main>
 
-    <script type="module" src="/client.js?v=0.5.2"></script>
+    <script type="module" src="/client.js?v=0.5.3-benchmark5"></script>
   </body>
 </html>
